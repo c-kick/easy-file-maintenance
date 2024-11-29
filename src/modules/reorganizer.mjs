@@ -92,7 +92,7 @@ async function reorganizeFiles(files, targetStructure = '/{year}/{month}/', date
     for (const file of files) {
         logger.text(`Scanning for dates in files... ${c++}/${files.length}`);
         const oldestDate = await extractOldestDate(file, dateThreshold);
-        if (!oldestDate || file.isDirectory) continue; // Skip files without a valid date, or directories
+        if (!oldestDate || file.isDirectory || file.delete) continue; // Skip files without a valid date, directories, or files that should be deleted anyway
 
         const year = oldestDate.getFullYear();
         const month = String(oldestDate.getMonth() + 1).padStart(2, '0');

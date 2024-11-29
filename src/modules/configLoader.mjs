@@ -20,7 +20,8 @@ let defaultConfig = {};
 try {
     userConfig = (await import(userConfigPath)).default;
 } catch (e) {
-    console.warn("No user-config.mjs file found. Proceeding with defaults only.");
+    console.error("No user-config.mjs file found, or file invalid!");
+    process.exit(1);
 }
 
 try {

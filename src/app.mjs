@@ -46,7 +46,7 @@ const debugMode = true; // Enable debugging mode for development
             const duplicates = await findDuplicates(scanResults, config.hashByteLimit);
             logger.succeed(`Found ${duplicates.length} duplicate groups.`);
             duplicates.forEach(group => {
-                console.log(`${group.original.path} has ${group.duplicates.length} duplicates`);
+                //console.log(`${group.original.path} has ${group.duplicates.length} duplicates`);
                 (operations.remove = (operations.remove ?? [])).push(...(group.duplicates.map(duplicate => ({...duplicate,  duplicate: true, original: group.original.path}))));
             });
         }
@@ -56,7 +56,7 @@ const debugMode = true; // Enable debugging mode for development
             const orphans = findOrphans(scanResults, config.orphanFileExtensions);
             logger.succeed(`Found ${orphans.length} orphaned files.`);
             orphans.forEach(orphan => {
-                console.log(`Found orphan: ${orphan.path}`);
+                //console.log(`Found orphan: ${orphan.path}`);
                 (operations.remove = (operations.remove ?? [])).push({...orphan, orphan: true});
             });
         }
@@ -74,9 +74,9 @@ const debugMode = true; // Enable debugging mode for development
         if (config.actions.includes('reorganize')) {
             logger.start('Checking if reorganizing is needed...');
             const reorganizeTheseFiles = await reorganizeFiles(scanResults, config.reorganizeTemplate, config.dateThreshold, config.relativePath ?? config.scanPath);
-            logger.succeed(`Permissions checked. Found ${reorganizeTheseFiles.length} items that can be reorganized.`);
+            logger.succeed(`Dates checked. Found ${reorganizeTheseFiles.length} items that can be reorganized.`);
             reorganizeTheseFiles.forEach(item => {
-                console.log(`Should move ${item.path} to: "${item.move_to}"`);
+                //console.log(`Should move ${item.path} to: "${item.move_to}"`);
                 (operations.move = (operations.move ?? [])).push({...item, reorganize: true});
             });
         }
@@ -84,19 +84,16 @@ const debugMode = true; // Enable debugging mode for development
         if (config.actions.includes('cleanup')) {
             logger.start('Performing cleanup...');
             const cleanupItems = await sweeper(scanResults);
+            logger.succeed(`Done. ${cleanupItems.length} items require cleaning up.`);
             cleanupItems.forEach(item => {
-                console.log(`Should move ${item.path} to: "${config.recycleBinPath}"`);
+                //console.log(`Should move ${item.path} to: "${config.recycleBinPath}"`);
                 (operations.move = (operations.move ?? [])).push({...item, reorganize: true});
             });
         }
 
-
-
         // Step 5: Confirm and Execute
         logger.start('Executing pending actions...');
         await executeOperations(operations, async (operation) => {
-            console.log(`[DEBUG] Pending action: ${operation.description}`);
-            return 'y'; // Automatically confirm for debugging
         });
         logger.succeed('All actions executed.').stop();
 
