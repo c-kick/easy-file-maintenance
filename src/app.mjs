@@ -18,6 +18,11 @@ const debugMode = true; // Enable debugging mode for development
     try {
         // Step 1: Load Configuration
         const config = configLoader;
+        if (!config) {
+            logger.fail();
+            console.error('Configuration invalid, cannot continue.');
+            process.exit(1);
+        }
         logger.succeed('Configuration loaded.');
 
         // Step 2: Validate Paths (Skipped here for brevity but should include checks)
@@ -79,7 +84,10 @@ const debugMode = true; // Enable debugging mode for development
         if (config.actions.includes('cleanup')) {
             logger.start('Performing cleanup...');
             const cleanupItems = await sweeper(scanResults);
-            console.log(cleanupItems);
+            cleanupItems.forEach(item => {
+                console.log(`Should move ${item.path} to: "${config.recycleBinPath}"`);
+                (operations.move = (operations.move ?? [])).push({...item, reorganize: true});
+            });
         }
 
 

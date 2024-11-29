@@ -1,4 +1,4 @@
-
+import logger from '../utils/logger.mjs';
 import { createRequire } from 'module';
 const require = createRequire(import.meta.url);
 
@@ -30,17 +30,51 @@ try {
     throw e;
 }
 
-// Merge user config into default config
-const mergeConfigs = (defaults, user) => {
-    const merged = { ...defaults, ...user };
+// Validate and merge user config into default config
+const validateAndMergeConfigs = (defaults, user) => {
+    logger.start('Validate configuration...');
+    const merged = {};
 
-    // Validate and default specific arrays
-    merged.ignoreDirectories = Array.isArray(merged.ignoreDirectories) ? merged.ignoreDirectories : [];
-    merged.ignoreFiles = Array.isArray(merged.ignoreFiles) ? merged.ignoreFiles : [];
+    for (const key in defaults) {
+        const { default: defaultValue, type, validate, required } = defaults[key];
+        const userValue = user[key] !== undefined ? user[key] : defaultValue;
+
+        // Type check
+        if (user[key] === undefined && required) {
+            logger.fail();
+            console.error(`Error validating config: ${key} is a required setting!`);
+            return false;
+        }
+        if (typeof userValue !== type) {
+            const msg = `"${typeof userValue}" is an invalid type for "${key}". Expected "${type}".`;
+            if ((typeof defaultValue === type)) {
+                console.warn(`${msg} Falling back to default: `, defaultValue);
+                merged[key] = defaultValue;
+            } else {
+                logger.fail();
+                console.error(`Error validating config: ${msg} Default value ("${defaultValue}") is also invalid, or missing!`);
+                return false;
+            }
+        } else if (validate && !validate(userValue)) {
+            const msg = `"${userValue}" is invalid for "${key}".`;
+            // Validation check
+            if (validate(defaultValue)) {
+                console.warn(`${msg} Falling back to default: `, defaultValue);
+                merged[key] = defaultValue;
+            } else {
+                logger.fail();
+                console.error(`Error validating config: ${msg} Default value (${defaultValue}) also invalid, or missing!`);
+                return false;
+            }
+        } else {
+            merged[key] = userValue;
+        }
+    }
+    logger.succeed('Validated configuration.');
 
     return merged;
 };
 
-const mergedConfig = mergeConfigs(defaultConfig, userConfig);
+const mergedConfig = validateAndMergeConfigs(defaultConfig, userConfig);
 
 export default mergedConfig;
