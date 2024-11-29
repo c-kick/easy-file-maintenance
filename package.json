@@ -1,0 +1,29 @@
+{
+  "name": "easy-file-maintenance",
+  "author": "Klaas Leussink / hnldesign / c_kick",
+  "license": "MIT",
+  "version": "1.0.0",
+  "description": "A modular Node.js application for efficient file and directory maintenance.",
+  "main": "src/app.mjs",
+  "type": "module",
+  "scripts": {
+    "start": "node src/app.mjs",
+    "test": "node --experimental-vm-modules node_modules/jest/bin/jest.js"
+  },
+  "dependencies": {
+    "exif-parser": "^0.1.12",
+    "fs-extra": "^11.1.1",
+    "ora": "^6.1.2",
+    "minimatch": "^9.0.0"
+  },
+  "devDependencies": {
+    "jest": "^29.6.2"
+  },
+  "keywords": [
+    "files",
+    "maintenance",
+    "duplicates",
+    "orphaned",
+    "reorganization"
+  ]
+}
