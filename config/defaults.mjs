@@ -18,7 +18,14 @@ export default {
 
     // Files to ignore
     ignoreFiles: [
-        "Thumbs.db", // Example: Exact match
+        //"Thumbs.db", // Example: Exact match
         "*.ini"      // Example: Wildcard match (e.g., "config.ini", "setup.ini")
+    ],
+
+    // Files to always remove. Note: this will bypass anything defined in ignoreFiles!
+    removeFiles: [
+        "*picasa.ini", // Example: Exact match
+        "Thumbs.db",
+        //"*.ini"      // Example: Wildcard match (e.g., "config.ini", "setup.ini")
     ]
 };

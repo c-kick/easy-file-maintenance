@@ -41,6 +41,7 @@ async function scanDirectory(dirPath, config, depth = 0) {
 
     for (const item of items) {
         const itemPath = path.join(dirPath, item);
+        const itemName = path.basename(itemPath);
         const resolvedItemPath = path.resolve(itemPath);
         const stats = await stat(itemPath);
 
@@ -48,6 +49,11 @@ async function scanDirectory(dirPath, config, depth = 0) {
         const isForcedIgnored = forcedIgnorePaths.some(ignorePath =>
             resolvedItemPath.startsWith(ignorePath)
         );
+
+        // Check for forced deletes (moves)
+        const isForceMovedFile = stats.isFile() &&
+            Array.isArray(config.removeFiles) &&
+            config.removeFiles.some(pattern => matchPattern(itemName, pattern));
 
         // Check for ignored directories and files
         const isIgnoredDir = stats.isDirectory() &&
@@ -60,22 +66,23 @@ async function scanDirectory(dirPath, config, depth = 0) {
             Array.isArray(config.ignoreFiles) &&
             config.ignoreFiles.some(pattern => matchPattern(item, pattern));
 
-        if (isForcedIgnored || isIgnoredDir || isIgnoredFile) {
+        if (isForcedIgnored || isIgnoredDir || (isIgnoredFile && !isForceMovedFile)) {
             logger.text(`Ignoring: ${itemPath}`);
             continue;
         }
 
         const entry = {
+            depth,
             path: itemPath,
-            name: path.basename(itemPath),
+            name: itemName,
             dir: path.dirname(itemPath),
             size: stats.size,
             isFile: stats.isFile(),
             isDirectory: stats.isDirectory(),
-            depth,
             modifiedTime: stats.mtime,
             createdTime: stats.ctime,
             isEmpty: stats.isDirectory() ? (await readdir(itemPath)).length === 0 : stats.size === 0,
+            delete: isForceMovedFile,
             stats
         };
 

@@ -1,12 +1,13 @@
 
 export default {
     debugLevel: "debug",
-    scanPath: "/mnt/d/Projects/Stockfoto\'s/Kick-off 2017",
+    scanPath: "/mnt/d/Projects/Stockfoto\'s/NOK Academy",
 	recycleBinPath: "/mnt/d/BIN",
 	actions: [
-    "reorganize",
+    //"reorganize",
     //"duplicates",
     //"orphans",
     //"permissions"
+    "cleanup"
   ]
 };

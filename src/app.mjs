@@ -5,10 +5,11 @@ import scanDirectory from './modules/scanner.mjs';
 import findDuplicates from './modules/duplicateChecker.mjs';
 import findOrphans from './modules/orphanDetector.mjs';
 import checkPermissions from './modules/permissionChecker.mjs';
-import executeOperations from './modules/executor.mjs';
+import executeOperations from './utils/executor.mjs';
 import fs from 'fs-extra';
 import ora from 'ora';
 import reorganizeFiles from "./modules/reorganizer.mjs";
+import sweeper from "./modules/sweeper.mjs";
 
 const debugMode = true; // Enable debugging mode for development
 
@@ -73,6 +74,12 @@ const debugMode = true; // Enable debugging mode for development
                 console.log(`Should move ${item.path} to: "${item.move_to}"`);
                 (operations.move = (operations.move ?? [])).push({...item, reorganize: true});
             });
+        }
+
+        if (config.actions.includes('cleanup')) {
+            logger.start('Performing cleanup...');
+            const cleanupItems = await sweeper(scanResults);
+            console.log(cleanupItems);
         }
 
 
