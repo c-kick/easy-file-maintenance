@@ -27,7 +27,6 @@ async function executeOperations(operations) {
                 const actions = operations[operation];
                 console.log(`Proceed with ${operation} actions`);
                 for (const item of actions) {
-
                     if ((answers[operation] && answers[operation] === 'c')) {
                         console.warn(`Not handling ${item.name} (${answers[operation]})`);
                     } else {
