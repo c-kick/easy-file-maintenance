@@ -79,13 +79,14 @@ async function extractOldestDate(file, dateThreshold) {
 
 /**
  * Reorganizes files into a structured directory hierarchy based on extracted dates.
- * @param {Array<Object>} files - Array of file objects to reorganize.
+ * @param {object} filesObject - Object containing file details from the scanner.
  * @param {string} targetStructure - The target directory structure (e.g., "/year/month/").
  * @param {Date} dateThreshold - The date threshold for sanity checking.
  * @param relPath
  */
-async function reorganizeFiles(files, targetStructure = '/{year}/{month}/', dateThreshold, relPath) {
+async function reorganizeFiles(filesObject, targetStructure = '/{year}/{month}/', dateThreshold, relPath) {
     if (!dateThreshold) { dateThreshold =  new Date('1995-01-01'); }
+    const files = Object.values(filesObject);
 
     let c = 0;
     const reorganize = [];

@@ -6,8 +6,6 @@ import findDuplicates from './modules/duplicateChecker.mjs';
 import findOrphans from './modules/orphanDetector.mjs';
 import checkPermissions from './modules/permissionChecker.mjs';
 import executeOperations from './utils/executor.mjs';
-import fs from 'fs-extra';
-import ora from 'ora';
 import reorganizeFiles from "./modules/reorganizer.mjs";
 import sweeper from "./modules/sweeper.mjs";
 
@@ -25,77 +23,77 @@ const debugMode = true; // Enable debugging mode for development
         }
         logger.succeed('Configuration loaded.');
 
-        // Step 2: Validate Paths (Skipped here for brevity but should include checks)
-
-        // Step 3: Scan Directory
+        // Scan Directory
         logger.succeed(`Start scan for "${config.scanPath}"`);
         logger.start('Scanning directory...');
-        const scanResults = await scanDirectory(config.scanPath, config, 0);
-        let fileCount = 0, dirCount = 0;
-        scanResults.forEach(item => {
-            if (item.isFile) fileCount++;
-            if (item.isDirectory) dirCount++;
-        });
-        logger.succeed(`Directory scanned. Found ${scanResults.length} items (${fileCount} files and ${dirCount} directories).`);
+        let scan = await scanDirectory(config.scanPath, config, 0);
+        logger.succeed(`Directory scanned. Found ${(scan.fileCount + scan.dirCount)} items (${scan.fileCount} files, in ${scan.dirCount} directories).`);
 
-        // Step 4: Perform Checks based on `actions`
+        // Perform Checks based on `actions`
         const operations = [];
 
+        //console.log(scan.results.files)
         if (config.actions.includes('duplicates')) {
             logger.start('Checking for duplicate files...');
-            const duplicates = await findDuplicates(scanResults, config.hashByteLimit);
+            const duplicates = await findDuplicates(scan.results.files, config.hashByteLimit);
             logger.succeed(`Found ${duplicates.length} duplicate groups.`);
             duplicates.forEach(group => {
-                //console.log(`${group.original.path} has ${group.duplicates.length} duplicates`);
-                (operations.remove = (operations.remove ?? [])).push(...(group.duplicates.map(duplicate => ({...duplicate,  duplicate: true, original: group.original.path}))));
+                group.duplicates.forEach(item => (operations[item.path] ??= {}).duplicate = { original: group.original.path })
             });
         }
 
         if (config.actions.includes('orphans')) {
             logger.start('Checking for orphan files...');
-            const orphans = findOrphans(scanResults, config.orphanFileExtensions);
+            const orphans = await findOrphans(scan.results.files, config.orphanFileExtensions, config.recycleBinPath);
             logger.succeed(`Found ${orphans.length} orphaned files.`);
-            orphans.forEach(orphan => {
-                //console.log(`Found orphan: ${orphan.path}`);
-                (operations.remove = (operations.remove ?? [])).push({...orphan, orphan: true});
-            });
+            orphans.forEach(item => (operations[item.path] ??= {}).orphan = { move_to: item.move_to });
         }
 
         if (config.actions.includes('permissions')) {
             logger.start('Checking permissions...');
-            const wrongPermissions = await checkPermissions(scanResults, 0o664, 0o775);
+            const wrongPermissions = await checkPermissions(scan.results, 0o664, 0o775);
             logger.succeed(`Permissions checked. Found ${wrongPermissions.length} items with wrong permissions.`);
-            wrongPermissions.forEach(item => {
-                //console.log(`Wrong permissions for ${item.isFile ? 'file' : 'directoy'}: ${item.path} (${item.mode.toString(8)}, desired: ${item.new_mode.toString(8)})`);
-                (operations.chmod = (operations.chmod ?? [])).push({...item, change_permissions: true});
-            });
+            wrongPermissions.forEach(item => (operations[item.path] ??= {}).permissions = { mode: item.mode, new_mode: item.new_mode });
         }
 
         if (config.actions.includes('reorganize')) {
             logger.start('Checking if reorganizing is needed...');
-            const reorganizeTheseFiles = await reorganizeFiles(scanResults, config.reorganizeTemplate, config.dateThreshold, config.relativePath ?? config.scanPath);
+            const reorganizeTheseFiles = await reorganizeFiles(scan.results.files, config.reorganizeTemplate, config.dateThreshold, config.relativePath ?? config.scanPath);
             logger.succeed(`Dates checked. Found ${reorganizeTheseFiles.length} items that can be reorganized.`);
-            reorganizeTheseFiles.forEach(item => {
-                //console.log(`Should move ${item.path} to: "${item.move_to}"`);
-                (operations.move = (operations.move ?? [])).push({...item, reorganize: true});
-            });
+            reorganizeTheseFiles.forEach(item => (operations[item.path] ??= {}).reorganize = { move_to: item.move_to });
         }
+
+        // Confirm and Execute
+        logger.start('Executing pending operations...');
+        for (const file in operations) {
+            //the order in which actions were added to `operations` dictates the correct order. NOT the switch statement's order!
+            const fileOps = operations[file];
+            for (let op in fileOps) {
+                switch (op) {
+                    case 'reorganize':
+                        console.log(op, fileOps[op]);
+                        break;
+                    case 'permissions':
+                        console.log(op, fileOps[op]);
+                        break;
+                    case 'duplicate':
+                        console.log(op, fileOps[op]);
+                        break;
+                    case 'orphan':
+                        console.log(op, fileOps[op]);
+                        break;
+                }
+            }
+        }
+        logger.succeed('All actions executed.').stop();
 
         if (config.actions.includes('cleanup')) {
-            logger.start('Performing cleanup...');
-            const cleanupItems = await sweeper(scanResults);
+            logger.start('Checking for cleanup...');
+            scan = await scanDirectory(config.scanPath, config);
+            const cleanupItems = await sweeper(scan.results, config.scanPath, config.recycleBinPath);
             logger.succeed(`Done. ${cleanupItems.length} items require cleaning up.`);
-            cleanupItems.forEach(item => {
-                //console.log(`Should move ${item.path} to: "${config.recycleBinPath}"`);
-                (operations.move = (operations.move ?? [])).push({...item, reorganize: true});
-            });
+            cleanupItems.forEach(item => (operations[item.path] ??= {}).cleanup = { move_to: item.move_to });
         }
-
-        // Step 5: Confirm and Execute
-        logger.start('Executing pending actions...');
-        await executeOperations(operations, async (operation) => {
-        });
-        logger.succeed('All actions executed.').stop();
 
     } catch (error) {
         logger.fail(`An error occurred: ${error.message}`).stop();

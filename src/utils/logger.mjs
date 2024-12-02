@@ -1,5 +1,19 @@
 import ora from 'ora';
 
+// Combined error handler function
+function globalErrorHandler(error, origin) {
+  console.error(`${error} (Origin: ${origin})`);
+
+  // Optionally exit the process on severe errors
+  if (origin === 'uncaughtException') {
+    process.exit(1); // Non-zero exit code indicates an error
+  }
+}
+
+// Attach the handler to both unhandledRejection and uncaughtException
+process.on('unhandledRejection', (error) => globalErrorHandler(error, 'unhandledRejection'));
+process.on('uncaughtException', (error) => globalErrorHandler(error, 'uncaughtException'));
+
 let spinner = null;
 
 const logger = {

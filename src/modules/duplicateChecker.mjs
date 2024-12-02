@@ -39,44 +39,16 @@ function determineOriginal(group) {
     });
 }
 
-/**
- * Filters file groups by excluding files that are likely part of a fileset,
- * based on the presence of sibling files (i.e., files with the same base name
- * but different extensions) in the same directory.
- * @param {Array<Array<Object>>} dupeSets - Array of file groups where each group
- * contains files with identical hash values.
- * @param {Array<Object>} files - Array of all file objects, which is used to
- * check for siblings in the same directory as potential duplicates.
- * @returns {Array<Array<Object>>} - An array of filtered file groups where each
- * group excludes files with siblings, retaining only true duplicates.
- */
-function fileSiblingCheck(dupeSets, files) {
-    return dupeSets.map((dupeSet) => {
-        const baseDir = dupeSet[0].path.replace(/\/[^\/]+$/, '');
-        const siblingCandidates = files.filter(file =>
-            file.path.startsWith(baseDir)
-        );
-
-        const filteredDupes = dupeSet.slice(1).filter(dupe => {
-            const baseName = dupe.path.split('/').pop().split('.')[0];
-            const siblings = siblingCandidates.filter(file =>
-                file.path.split('/').pop().split('.')[0] === baseName &&
-                file.path !== dupe.path
-            );
-            return siblings.length === 0;
-        });
-
-        return filteredDupes.length > 0 ? [dupeSet[0], ...filteredDupes] : null;
-    }).filter(Boolean);
-}
 
 /**
  * Finds duplicate files based on size, hash, and sibling file filtering.
- * @param {object[]} files - Array of file details from the scanner.
+ * @param {object} filesObject - Object containing file details from the scanner.
  * @param {number} chunkSize - Number of bytes to hash for partial comparison.
  * @returns {Promise<Array>} - Array of duplicate groups, each with the original file and its duplicates.
  */
-async function findDuplicates(files, chunkSize = CHUNK_SIZE) {
+async function findDuplicates(filesObject, chunkSize = CHUNK_SIZE) {
+    // Convert filesObject to an array of file entries
+    const files = Object.values(filesObject);
     // Group files by size
     const sizeGroups = files.reduce((groups, file) => {
         if (!file.isFile) return groups; // Ignore directories
@@ -107,14 +79,7 @@ async function findDuplicates(files, chunkSize = CHUNK_SIZE) {
         }
     }
 
-    // Apply sibling file filtering
-    const filteredDuplicates = fileSiblingCheck(duplicates.map(group => [group.original, ...group.duplicates]), files);
-
-    // Reformat filtered results into the original/duplicates structure
-    return filteredDuplicates.map(group => ({
-        original: group[0],
-        duplicates: group.slice(1)
-    }));
+    return duplicates;
 }
 
 export default findDuplicates;

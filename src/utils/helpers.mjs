@@ -34,3 +34,21 @@ export function userConfirm(operation) {
     promptUser();
   });
 }
+
+/**
+ * Rebase `targetPath` to start with `basePath` while retaining its unique parts.
+ *
+ * @param {string} basePath - The base path to use as the new prefix.
+ * @param {string} targetPath - The target path to adjust.
+ * @returns {string} The adjusted path.
+ */
+export function rebasePath(basePath, targetPath) {
+  // Normalize and split paths
+  const [baseSegments, targetSegments] = [basePath, targetPath].map(p => path.resolve(p).split(path.sep));
+
+  // Find the first differing segment
+  const uniquePart = targetSegments.slice(baseSegments.findIndex((seg, i) => seg !== targetSegments[i])).join(path.sep);
+
+  // Construct and return the new path
+  return path.join(basePath, uniquePart);
+}

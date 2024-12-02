@@ -1,8 +1,7 @@
 import logger from '../utils/logger.mjs';
 import fs from 'fs';
 import path from 'path';
-import { promisify } from 'util';
-import ora from 'ora';
+import {promisify} from 'util';
 
 const readdir = promisify(fs.readdir);
 const stat = promisify(fs.stat);
@@ -25,11 +24,13 @@ function matchPattern(str, pattern) {
  * @param {string} dirPath - Path to the directory to scan.
  * @param {object} config - Configuration object containing exclusion rules.
  * @param {number} depth - Current depth in the directory tree.
- * @returns {Promise<object[]>} - List of file and directory details.
+ * @returns {Promise<{}>} - List of file and directory details.
  */
 async function scanDirectory(dirPath, config, depth = 0) {
-    const results = [];
+    const results = { directories: {}, files: {} };
     const items = await readdir(dirPath);
+    let intrinsicFileCount = 0, fileCount = 0, dirCount = 1;
+    let intrinsicDirectorySize = 0, directorySize = 0;
 
     // Paths to always ignore
     const forcedIgnorePaths = [
@@ -47,24 +48,24 @@ async function scanDirectory(dirPath, config, depth = 0) {
 
         // Check for forced ignores
         const isForcedIgnored = forcedIgnorePaths.some(ignorePath =>
-            resolvedItemPath.startsWith(ignorePath)
+          resolvedItemPath.startsWith(ignorePath)
         );
 
         // Check for forced deletes (moves)
         const isForceMovedFile = stats.isFile() &&
-            Array.isArray(config.removeFiles) &&
-            config.removeFiles.some(pattern => matchPattern(itemName, pattern));
+          Array.isArray(config.removeFiles) &&
+          config.removeFiles.some(pattern => matchPattern(itemName, pattern));
 
         // Check for ignored directories and files
         const isIgnoredDir = stats.isDirectory() &&
-            !isForcedIgnored &&
-            Array.isArray(config.ignoreDirectories) &&
-            config.ignoreDirectories.some(pattern => matchPattern(item, pattern));
+          !isForcedIgnored &&
+          Array.isArray(config.ignoreDirectories) &&
+          config.ignoreDirectories.some(pattern => matchPattern(item, pattern));
 
         const isIgnoredFile = stats.isFile() &&
-            !isForcedIgnored &&
-            Array.isArray(config.ignoreFiles) &&
-            config.ignoreFiles.some(pattern => matchPattern(item, pattern));
+          !isForcedIgnored &&
+          Array.isArray(config.ignoreFiles) &&
+          config.ignoreFiles.some(pattern => matchPattern(item, pattern));
 
         if (isForcedIgnored || isIgnoredDir || (isIgnoredFile && !isForceMovedFile)) {
             logger.text(`Ignoring: ${itemPath}`);
@@ -82,23 +83,66 @@ async function scanDirectory(dirPath, config, depth = 0) {
             modifiedTime: stats.mtime,
             createdTime: stats.ctime,
             isEmpty: stats.isDirectory() ? (await readdir(itemPath)).length === 0 : stats.size === 0,
+            isAlone: false, // Initially set to false
             delete: isForceMovedFile,
+            ignore: isForcedIgnored || isIgnoredDir || (isIgnoredFile && !isForceMovedFile),
             stats
         };
 
-        results.push(entry);
+        if (stats.isFile()) {
+            results.files[itemPath] = entry;
+            intrinsicFileCount++;
+            intrinsicDirectorySize += stats.size;
+        }
+        if (stats.isDirectory()) {
+            results.directories[itemPath] = entry;
+            dirCount++;
+        }
 
         // Update spinner progress
         logger.text(`Scanning: ${itemPath}`);
 
         // Recursively scan directories
         if (entry.isDirectory) {
-            const subResults = await scanDirectory(itemPath, config, depth + 1);
-            results.push(...subResults);
+            const subScan = await scanDirectory(itemPath, config, depth + 1);
+
+            // Merge subScan results into current results
+            results.files = { ...results.files, ...subScan.results.files };
+            results.directories = { ...results.directories, ...subScan.results.directories };
+
+            // Update directory attributes with subdirectory data
+            fileCount += subScan.fileCount;
+            directorySize += subScan.directorySize;
+            dirCount += subScan.dirCount;
         }
     }
 
-    return results;
+    // Update the current directory entry with the aggregated data
+    results.directories[dirPath] = {
+        depth,
+        path:          dirPath,
+        name:          path.basename(dirPath),
+        dir:           path.dirname(dirPath),
+        isDirectory:   true,
+        intrinsicFileCount,
+        fileCount:     fileCount + intrinsicFileCount, // Include own files and subdirectory files
+        intrinsicDirectorySize,
+        directorySize: directorySize + intrinsicDirectorySize, // Include own size and subdirectory size
+        isEmpty:       items.length === 0,
+        stats:         await stat(dirPath)
+    };
+
+    // Update `isAlone` for files based on the directory information
+    if (intrinsicFileCount === 1) {
+        const singleFilePath = Object.keys(results.files).find(
+          filePath => path.dirname(filePath) === dirPath
+        );
+        if (singleFilePath) {
+            results.files[singleFilePath].isAlone = true;
+        }
+    }
+
+    return { results, fileCount: fileCount + intrinsicFileCount, dirCount };
 }
 
 export default scanDirectory;
