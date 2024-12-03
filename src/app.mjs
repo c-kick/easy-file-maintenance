@@ -52,48 +52,27 @@ const debugMode = true; // Enable debugging mode for development
         if (config.actions.includes('permissions')) {
             logger.start('Checking permissions...');
             const wrongPermissions = await checkPermissions(scan.results, 0o664, 0o775);
-            logger.succeed(`Permissions checked. Found ${wrongPermissions.length} items with wrong permissions.`);
+            logger.succeed(`Found ${wrongPermissions.length} items with wrong permissions.`);
             wrongPermissions.forEach(item => (operations[item.path] ??= {}).permissions = { mode: item.mode, new_mode: item.new_mode });
         }
 
         if (config.actions.includes('reorganize')) {
-            logger.start('Checking if reorganizing is needed...');
+            logger.start('Checking if reorganizing is possible...');
             const reorganizeTheseFiles = await reorganizeFiles(scan.results.files, config.reorganizeTemplate, config.dateThreshold, config.relativePath ?? config.scanPath);
-            logger.succeed(`Dates checked. Found ${reorganizeTheseFiles.length} items that can be reorganized.`);
+            logger.succeed(`Found ${reorganizeTheseFiles.length} items that can be reorganized.`);
             reorganizeTheseFiles.forEach(item => (operations[item.path] ??= {}).reorganize = { move_to: item.move_to });
         }
 
-        // Confirm and Execute
-        logger.start('Executing pending operations...');
-        for (const file in operations) {
-            //the order in which actions were added to `operations` dictates the correct order. NOT the switch statement's order!
-            const fileOps = operations[file];
-            for (let op in fileOps) {
-                switch (op) {
-                    case 'reorganize':
-                        console.log(op, fileOps[op]);
-                        break;
-                    case 'permissions':
-                        console.log(op, fileOps[op]);
-                        break;
-                    case 'duplicate':
-                        console.log(op, fileOps[op]);
-                        break;
-                    case 'orphan':
-                        console.log(op, fileOps[op]);
-                        break;
-                }
-            }
-        }
-        logger.succeed('All actions executed.').stop();
-
         if (config.actions.includes('cleanup')) {
-            logger.start('Checking for cleanup...');
+            logger.start('Checking for items to cleanup...');
             scan = await scanDirectory(config.scanPath, config);
             const cleanupItems = await sweeper(scan.results, config.scanPath, config.recycleBinPath);
-            logger.succeed(`Done. ${cleanupItems.length} items require cleaning up.`);
+            logger.succeed(`Found ${cleanupItems.length} items requiring cleaning up.`);
             cleanupItems.forEach(item => (operations[item.path] ??= {}).cleanup = { move_to: item.move_to });
         }
+
+        // Confirm and Execute
+        await executeOperations(operations);
 
     } catch (error) {
         logger.fail(`An error occurred: ${error.message}`).stop();

@@ -17,6 +17,9 @@ process.on('uncaughtException', (error) => globalErrorHandler(error, 'uncaughtEx
 let spinner = null;
 
 const logger = {
+  hasInstance: () => {
+    return typeof spinner !== 'undefined';
+  },
   start: (message) => {
     if (!spinner) {
       spinner = ora(message).start();
@@ -36,13 +39,30 @@ const logger = {
     if (spinner) {
       spinner.succeed(message);
       spinner = null;
+    } else {
+      ora().start().succeed(message);
+    }
+    return logger; // Enable chaining
+  },
+  warn: (message) => {
+    if (spinner) {
+      spinner.warn(`\x1b[33m${message}\x1b[0m`);
+      spinner = null;
     }
     return logger; // Enable chaining
   },
   fail: (message) => {
     if (spinner) {
-      spinner.fail(message);
+      spinner.fail(`\x1b[31m${message}\x1b[0m`);
       spinner = null;
+    }
+    return logger; // Enable chaining
+  },
+  stopAndPersist(options = {}) {
+    if (spinner) {
+      spinner.stopAndPersist(options);
+    } else {
+      spinner = ora().start().stopAndPersist(options);
     }
     return logger; // Enable chaining
   },

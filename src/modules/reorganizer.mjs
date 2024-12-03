@@ -21,7 +21,7 @@ export function appendToFilename(fileName, appendString) {
  * @param {Date} dateThreshold - The date threshold for sanity checking.
  * @returns {Date|null} - The oldest valid date or null if none are valid.
  */
-async function extractOldestDate(file, dateThreshold) {
+export async function extractOldestDate(file, dateThreshold) {
     const dates = [];
 
     // Step 1: Check EXIF data
@@ -37,7 +37,23 @@ async function extractOldestDate(file, dateThreshold) {
     }
 
     // Step 2: Check file creation or birth timestamp
-    if (file.createdTime) dates.push(new Date(file.createdTime));
+    if (file.createdTime) dates.push(new Date(Date.UTC(
+      new Date(file.createdTime).getUTCFullYear(),
+      new Date(file.createdTime).getUTCMonth(),
+      new Date(file.createdTime).getUTCDate(),
+      new Date(file.createdTime).getUTCHours(),
+      new Date(file.createdTime).getUTCMinutes(),
+      new Date(file.createdTime).getUTCSeconds()
+    )));
+
+    if (file.modifiedTime) dates.push(new Date(Date.UTC(
+      new Date(file.modifiedTime).getUTCFullYear(),
+      new Date(file.modifiedTime).getUTCMonth(),
+      new Date(file.modifiedTime).getUTCDate(),
+      new Date(file.modifiedTime).getUTCHours(),
+      new Date(file.modifiedTime).getUTCMinutes(),
+      new Date(file.modifiedTime).getUTCSeconds()
+    )));
 
     // Step 3: Extract dates from the filename
     const datePatterns = [

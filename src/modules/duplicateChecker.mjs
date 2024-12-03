@@ -1,8 +1,11 @@
 
 import fs from 'fs/promises';
 import crypto from 'crypto';
+import pLimit from 'p-limit'; // Use this library to control concurrency
+import {extractOldestDate} from "./reorganizer.mjs";
 
 const CHUNK_SIZE = 2048; // Default chunk size for partial hashing
+const HASH_LIMIT = pLimit(10); // Limit concurrency to 10
 
 /**
  * Hashes the first CHUNK_SIZE bytes of a file.
@@ -23,21 +26,41 @@ async function hashFileChunk(filePath, chunkSize = CHUNK_SIZE) {
 }
 
 /**
- * Determines the original file from a duplicate group based on criteria
- * such as the smallest size and earliest modification time.
- * @param {Array<Object>} group - Array of files in a duplicate group.
- * @returns {Object} - The original file.
+ * Determines the original file from a group of duplicates based on the oldest creation or modification date,
+ * or the shortest filename as a tiebreaker.
+ * @param {object[]} files - Array of file objects representing duplicates.
+ * @returns {object} - The original file object.
  */
-function determineOriginal(group) {
-    return group.reduce((original, current) => {
-        // Prioritize smallest size, then earliest modified time
-        if (current.size < original.size ||
-            (current.size === original.size && current.modifiedTime < original.modifiedTime)) {
-            return current;
+function determineOriginal(files) {
+    let oldestFile = files[0];
+    let oldestDate = new Date(Math.min(
+      files[0].createdTime ? new Date(files[0].createdTime).getTime() : Infinity,
+      files[0].modifiedTime ? new Date(files[0].modifiedTime).getTime() : Infinity
+    ));
+
+    for (const file of files) {
+        // Convert created and modified times to timestamps
+        const createdTimestamp = file.createdTime ? new Date(file.createdTime).getTime() : Infinity;
+        const modifiedTimestamp = file.modifiedTime ? new Date(file.modifiedTime).getTime() : Infinity;
+
+        // Determine the earliest timestamp for this file
+        const fileTimestamp = Math.min(createdTimestamp, modifiedTimestamp);
+
+        // If this file is older, update oldestFile and oldestDate
+        if (fileTimestamp < oldestDate.getTime()) {
+            oldestDate = new Date(fileTimestamp);
+            oldestFile = file;
+        } else if (fileTimestamp === oldestDate.getTime()) {
+            // If timestamps are identical, select the file with the shortest name
+            if (file.name.length < oldestFile.name.length) {
+                oldestFile = file;
+            }
         }
-        return original;
-    });
+    }
+
+    return oldestFile;
 }
+
 
 
 /**
@@ -47,12 +70,9 @@ function determineOriginal(group) {
  * @returns {Promise<Array>} - Array of duplicate groups, each with the original file and its duplicates.
  */
 async function findDuplicates(filesObject, chunkSize = CHUNK_SIZE) {
-    // Convert filesObject to an array of file entries
-    const files = Object.values(filesObject);
-    // Group files by size
+    const files = Object.values(filesObject).filter(file => file.isFile && file.size > 0);
+
     const sizeGroups = files.reduce((groups, file) => {
-        if (!file.isFile) return groups; // Ignore directories
-        if (!file.size) return groups; // Ignore zero byte files
         (groups[file.size] = groups[file.size] || []).push(file);
         return groups;
     }, {});
@@ -62,12 +82,17 @@ async function findDuplicates(filesObject, chunkSize = CHUNK_SIZE) {
     for (const [size, group] of Object.entries(sizeGroups)) {
         if (group.length < 2) continue; // Skip unique sizes
 
-        // Hash the first chunk of each file and group by hash
-        const hashGroups = {};
-        for (const file of group) {
-            const hash = await hashFileChunk(file.path, chunkSize);
-            (hashGroups[hash] = hashGroups[hash] || []).push(file);
+        // Concurrently hash file chunks
+        const hashPromises = group.map(file => HASH_LIMIT(() => hashFileChunk(file.path, chunkSize)));
+        const hashes = await Promise.all(hashPromises);
+
+        // Group by hash and determine duplicates
+        const hashGroups = hashes.reduce((hashMap, hash, index) => {
+            if (hash) {
+                (hashMap[hash] = hashMap[hash] || []).push(group[index]);
         }
+            return hashMap;
+        }, {});
 
         // Collect duplicates and determine original files
         for (const [hash, hashGroup] of Object.entries(hashGroups)) {

@@ -13,8 +13,9 @@
   "dependencies": {
     "exif-parser": "^0.1.12",
     "fs-extra": "^11.1.1",
+    "minimatch": "^9.0.0",
     "ora": "^6.1.2",
-    "minimatch": "^9.0.0"
+    "p-limit": "^6.1.0"
   },
   "devDependencies": {
     "jest": "^29.6.2"

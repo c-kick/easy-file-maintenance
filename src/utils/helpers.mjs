@@ -8,8 +8,9 @@ export function normalizePath(thisPath) {
   return path.normalize(path.resolve(thisPath)).replace(/\/+$/, '');
 }
 
-export function userConfirm(operation) {
-  logger.stop();
+export function userConfirm(question, validAnswers = ['y', 'a', 'n', 'c', 's']) {
+  logger.stopAndPersist({ symbol: '\x1b[35m?\x1b[0m', text: `\x1b[35m${question.toString()}\x1b[0m` });
+  const answerGuide = validAnswers.length === 4 ?'(y)es, yes to (a)ll, (n)o, or (c)ancel' : '(y)es, yes to (a)ll, (n)o, (c)ancel, or (s)how affected items first';
   return new Promise((resolve) => {
     const rl = readline.createInterface({
       input: process.stdin,
@@ -17,15 +18,14 @@ export function userConfirm(operation) {
     });
 
     const promptUser = () => {
-      rl.question(`${operation.description ?? operation.toString()}\n(y)es, yes to (a)ll, (n)o, (c)ancel: `, (answer) => {
-        const validAnswers = ['y', 'a', 'n', 'c'];
+      rl.question(`${(logger.hasInstance() ? '' : `${question.toString()}\n`)}${answerGuide}: `, (answer) => {
         const lowerCaseAnswer = answer.toLowerCase();
 
         if (validAnswers.includes(lowerCaseAnswer)) {
           rl.close();
           resolve(lowerCaseAnswer);
         } else {
-          console.warn('Invalid choice. Please enter y, a, n, or c.');
+          console.warn(`Invalid choice. Please enter ${validAnswers.length <= 1 ? validAnswers.join('') : `${validAnswers.slice(0, -1).join(', ')} or ${validAnswers.slice(-1)}`}.`);
           promptUser(); // Ask again if the answer is not valid
         }
       });
@@ -51,4 +51,33 @@ export function rebasePath(basePath, targetPath) {
 
   // Construct and return the new path
   return path.join(basePath, uniquePart);
+}
+
+/**
+ * Outputs a header to the console, with the message centered and padded with '-' characters.
+ * If the message is not provided, it will output a dashed line of the specified length.
+ * @param {string} [message=''] - The message to display (optional).
+ * @param {number} [characters=50] - The total length of the output, including the message and padding.
+ */
+export function doHeader(message = '', characters = 50) {
+  // Wrap message in spaces if provided
+  const wrappedMessage = message ? ` ${message} ` : '';
+
+  // Calculate the padding length on each side
+  const remainingSpace = characters - wrappedMessage.length;
+  if (remainingSpace < 0) {
+    console.log(message); // If message is longer than available space, just print it.
+    return;
+  }
+
+  const paddingLength = Math.floor(remainingSpace / 2);
+  const padding = '-'.repeat(paddingLength);
+
+  // Construct the final header
+  const header = wrappedMessage
+    ? padding + wrappedMessage + padding + (remainingSpace % 2 ? '-' : '')
+    : '-'.repeat(characters);
+
+  // Output the header to the console
+  console.log(header);
 }
