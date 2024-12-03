@@ -3,6 +3,7 @@ import fs from 'fs/promises';
 import crypto from 'crypto';
 import pLimit from 'p-limit'; // Use this library to control concurrency
 import {extractOldestDate} from "./reorganizer.mjs";
+import {rebasePath} from "../utils/helpers.mjs";
 
 const CHUNK_SIZE = 2048; // Default chunk size for partial hashing
 const HASH_LIMIT = pLimit(10); // Limit concurrency to 10
@@ -66,10 +67,11 @@ function determineOriginal(files) {
 /**
  * Finds duplicate files based on size, hash, and sibling file filtering.
  * @param {object} filesObject - Object containing file details from the scanner.
+ * @param {string} binPath - The path to the recycle bin.
  * @param {number} chunkSize - Number of bytes to hash for partial comparison.
  * @returns {Promise<Array>} - Array of duplicate groups, each with the original file and its duplicates.
  */
-async function findDuplicates(filesObject, chunkSize = CHUNK_SIZE) {
+async function findDuplicates(filesObject, binPath, chunkSize = CHUNK_SIZE) {
     const files = Object.values(filesObject).filter(file => file.isFile && file.size > 0);
 
     const sizeGroups = files.reduce((groups, file) => {
@@ -98,7 +100,12 @@ async function findDuplicates(filesObject, chunkSize = CHUNK_SIZE) {
         for (const [hash, hashGroup] of Object.entries(hashGroups)) {
             if (hashGroup.length > 1) {
                 const original = determineOriginal(hashGroup);
-                const duplicatesOnly = hashGroup.filter(file => file !== original);
+                const duplicatesOnly = hashGroup.filter(file => file !== original).map(item => {
+                    return {
+                        ...item,
+                        move_to: rebasePath(binPath, item.path),
+                    }
+                });
                 duplicates.push({ original, duplicates: duplicatesOnly });
             }
         }

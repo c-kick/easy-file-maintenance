@@ -120,10 +120,12 @@ async function reorganizeFiles(filesObject, targetStructure = '/{year}/{month}/'
         .replace('{day}', day);
 
         const pathRef = path.basename(path.normalize(file.dir).replace(/\/$/, ''));
-        let targetName = appendToFilename(file.name, ` - ${pathRef}`);
-        const targetPath = path.join(targetDir, targetName);
+        let targetName = file.name.includes(pathRef) ? file.name : appendToFilename(file.name, ` - ${pathRef}`);
+        const targetPath = path.join((relPath ?? ''), path.join(targetDir, targetName));
 
-        reorganize.push({...file, move_to: targetPath});
+        if (!file.path.includes(targetDir)) {
+            reorganize.push({...file, move_to: targetPath});
+        }
     }
 
     return reorganize;

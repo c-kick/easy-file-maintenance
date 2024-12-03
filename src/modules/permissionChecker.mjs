@@ -9,7 +9,7 @@ const debugMode = true; // Debug mode flag
  * @param {number} dirPerm - Desired directory permissions (default: 0o775).
  * @returns {Promise<object[]>} - Array of objects representing files/directories with incorrect permissions.
  */
-async function checkPermissions(filesObject, filePerm = 0o664, dirPerm = 0o775) {
+async function checkPermissions(filesObject, filePerm = 664, dirPerm = 775) {
     const wrongPerms = [];
 
     // Combine files and directories into a single array
@@ -21,11 +21,12 @@ async function checkPermissions(filesObject, filePerm = 0o664, dirPerm = 0o775) 
     for (const entry of allEntries) {
         const desiredPerm = entry.isFile ? filePerm : dirPerm;
         const stats = entry.stats ?? await fs.stat(entry.path);
-        if ((stats.mode & 0o777) !== desiredPerm) {
+        const mode = parseInt((stats.mode & 0o777).toString(8), 10);
+        if (mode !== desiredPerm) {
             wrongPerms.push({
                 ...entry,
-                mode: stats.mode & 0o777,
-                new_mode: desiredPerm
+                mode: mode,
+                chmod: desiredPerm
             });
         }
     }

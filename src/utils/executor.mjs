@@ -1,6 +1,7 @@
 import logger from '../utils/logger.mjs';
 import {doHeader, userConfirm} from "./helpers.mjs";
-
+import fs from 'fs/promises';
+import path from 'path';
 
 function preProcessOps(operations, action) {
     return Object.entries(operations).reduce((acc, [key, value]) => {
@@ -62,6 +63,41 @@ function rearrangeOperations(operations) {
 }
 
 /**
+ * Performs the specified file operation.
+ * @param {string} filePath - Path to the file to operate on.
+ * @param {object} operation - Operation details. Can include 'move_to' or 'chmod'.
+ * @returns {Promise<boolean>} - Resolves to true if the operation was successful, otherwise false.
+ */
+async function doOperation(filePath, operation) {
+    let success = false;
+
+    try {
+        if (operation.hasOwnProperty('move_to')) {
+            const destinationPath = operation.move_to;
+
+            // Create target directory if it does not exist
+            await fs.mkdir(path.dirname(destinationPath), { recursive: true });
+
+            // Move the file
+            await fs.rename(filePath, destinationPath);
+            success = true;
+            console.log(`Moved: ${filePath}\n To: ${destinationPath}`);
+        } else if (operation.hasOwnProperty('chmod')) {
+            const permissions = operation.chmod;
+
+            // Change file permissions
+            await fs.chmod(filePath, permissions);
+            success = true;
+            console.log(`Changed permissions for: ${filePath} to ${permissions}`);
+        }
+    } catch (error) {
+        console.error(`Failed to execute operation on ${filePath}:`, error);
+    }
+
+    return success;
+}
+
+/**
  * Executes pending file operations based on user confirmation.
  * @param {object[]} operations - List of operations to perform.
  * @returns {Promise<void>}
@@ -71,6 +107,7 @@ async function executeOperations(operations) {
     const filteredOps = rearrangeOperations(operations);
     const answers = {};
     let yesAllActions = false;
+    let bytesHandled = 0;
     for (const operation in filteredOps) {
         if (filteredOps.hasOwnProperty(operation) && filteredOps[operation].length) {
 
@@ -113,10 +150,11 @@ async function executeOperations(operations) {
                     } else {
                         let yesAllItems = (answers[operation] && answers[operation] === 'a') || yesAllActions;
                         if (!yesAllItems) {
-                            answers[operation] = await userConfirm(`Continue handling ${item.path}?`, ['y', 'a', 'n', 'c']);
+                            answers[operation] = await userConfirm(`Handle ${operation} for "${item.path}"?`, ['y', 'a', 'n', 'c']);
                         }
                         if (['y','a'].includes(answers[operation]) || yesAllItems) {
-                            console.log(`Handling "${item.path}"`);
+                            const result = await doOperation(item.path, item[operation]);
+                            if (result) bytesHandled += item[operation].size ?? 0;
                         } else if (['n', 'c'].includes(answers[operation])) {
                             logger.warn(`Not handling "${item.path}" (${answers[operation]})`);
                         }
@@ -128,7 +166,7 @@ async function executeOperations(operations) {
         }
     }
     doHeader();
-    logger.succeed('All actions done.');
+    logger.succeed(`All actions done. ${bytesHandled} bytes saved.`);
 }
 
 export default executeOperations;

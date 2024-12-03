@@ -35,10 +35,10 @@ const debugMode = true; // Enable debugging mode for development
         //console.log(scan.results.files)
         if (config.actions.includes('duplicates')) {
             logger.start('Checking for duplicate files...');
-            const duplicates = await findDuplicates(scan.results.files, config.hashByteLimit);
+            const duplicates = await findDuplicates(scan.results.files, config.recycleBinPath, config.hashByteLimit);
             logger.succeed(`Found ${duplicates.length} duplicate groups.`);
             duplicates.forEach(group => {
-                group.duplicates.forEach(item => (operations[item.path] ??= {}).duplicate = { original: group.original.path })
+                group.duplicates.forEach(item => (operations[item.path] ??= {}).duplicate = { size: item.size, original: group.original.path, move_to: item.move_to })
             });
         }
 
@@ -46,19 +46,19 @@ const debugMode = true; // Enable debugging mode for development
             logger.start('Checking for orphan files...');
             const orphans = await findOrphans(scan.results.files, config.orphanFileExtensions, config.recycleBinPath);
             logger.succeed(`Found ${orphans.length} orphaned files.`);
-            orphans.forEach(item => (operations[item.path] ??= {}).orphan = { move_to: item.move_to });
+            orphans.forEach(item => (operations[item.path] ??= {}).orphan = { size: item.size, move_to: item.move_to });
         }
 
         if (config.actions.includes('permissions')) {
             logger.start('Checking permissions...');
-            const wrongPermissions = await checkPermissions(scan.results, 0o664, 0o775);
+            const wrongPermissions = await checkPermissions(scan.results, 664, 775);
             logger.succeed(`Found ${wrongPermissions.length} items with wrong permissions.`);
-            wrongPermissions.forEach(item => (operations[item.path] ??= {}).permissions = { mode: item.mode, new_mode: item.new_mode });
+            wrongPermissions.forEach(item => (operations[item.path] ??= {}).permissions = { mode: item.mode, chmod: item.chmod });
         }
 
         if (config.actions.includes('reorganize')) {
             logger.start('Checking if reorganizing is possible...');
-            const reorganizeTheseFiles = await reorganizeFiles(scan.results.files, config.reorganizeTemplate, config.dateThreshold, config.relativePath ?? config.scanPath);
+            const reorganizeTheseFiles = await reorganizeFiles(scan.results.files, config.reorganizeTemplate, config.dateThreshold, (config.relativePath || config.scanPath));
             logger.succeed(`Found ${reorganizeTheseFiles.length} items that can be reorganized.`);
             reorganizeTheseFiles.forEach(item => (operations[item.path] ??= {}).reorganize = { move_to: item.move_to });
         }
@@ -68,7 +68,7 @@ const debugMode = true; // Enable debugging mode for development
             scan = await scanDirectory(config.scanPath, config);
             const cleanupItems = await sweeper(scan.results, config.scanPath, config.recycleBinPath);
             logger.succeed(`Found ${cleanupItems.length} items requiring cleaning up.`);
-            cleanupItems.forEach(item => (operations[item.path] ??= {}).cleanup = { move_to: item.move_to });
+            cleanupItems.forEach(item => (operations[item.path] ??= {}).cleanup = { size: item.size, move_to: item.move_to });
         }
 
         // Confirm and Execute
