@@ -1,6 +1,7 @@
 import logger from '../utils/logger.mjs';
 import {doHeader, userConfirm} from "./helpers.mjs";
 import fs from 'fs/promises';
+import fsExtra from 'fs-extra';
 import path from 'path';
 
 function preProcessOps(operations, action) {
@@ -63,6 +64,26 @@ function rearrangeOperations(operations) {
 }
 
 /**
+ * Parses the permission value to a format suitable for fs.chmod().
+ * @param {string | number} permission - The permission value (e.g., '664', 664, '0o664').
+ * @returns {number} - The permission value as an octal number.
+ */
+function parsePermission(permission) {
+    if (typeof permission === 'number') {
+        return parseInt(permission.toString(), 8);
+    } else if (typeof permission === 'string') {
+        // Convert the string to a number using base 8 if it's not already in octal format
+        if (permission.startsWith('0o')) {
+            return parseInt(permission, 8);
+        } else {
+            return parseInt(permission, 8);
+        }
+    } else {
+        throw new Error('Invalid permission type. Must be a string or number.');
+    }
+}
+
+/**
  * Performs the specified file operation.
  * @param {string} filePath - Path to the file to operate on.
  * @param {object} operation - Operation details. Can include 'move_to' or 'chmod'.
@@ -79,16 +100,16 @@ async function doOperation(filePath, operation) {
             await fs.mkdir(path.dirname(destinationPath), { recursive: true });
 
             // Move the file
-            await fs.rename(filePath, destinationPath);
+            fsExtra.moveSync(filePath, destinationPath, { overwrite: true });
             success = true;
             console.log(`Moved: ${filePath}\n To: ${destinationPath}`);
         } else if (operation.hasOwnProperty('chmod')) {
-            const permissions = operation.chmod;
+            const permissions = parsePermission(operation.chmod);
 
             // Change file permissions
             await fs.chmod(filePath, permissions);
             success = true;
-            console.log(`Changed permissions for: ${filePath} to ${permissions}`);
+            console.log(`Changed permissions for: ${filePath} to ${operation.chmod}`);
         }
     } catch (error) {
         console.error(`Failed to execute operation on ${filePath}:`, error);

@@ -65,7 +65,7 @@ const debugMode = true; // Enable debugging mode for development
 
         if (config.actions.includes('cleanup')) {
             logger.start('Checking for items to cleanup...');
-            scan = await scanDirectory(config.scanPath, config);
+            //scan = await scanDirectory(config.scanPath, config);
             const cleanupItems = await sweeper(scan.results, config.scanPath, config.recycleBinPath);
             logger.succeed(`Found ${cleanupItems.length} items requiring cleaning up.`);
             cleanupItems.forEach(item => (operations[item.path] ??= {}).cleanup = { size: item.size, move_to: item.move_to });
