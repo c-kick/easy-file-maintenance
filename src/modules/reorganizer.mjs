@@ -100,7 +100,7 @@ export async function extractOldestDate(file, dateThreshold) {
  * @param {Date} dateThreshold - The date threshold for sanity checking.
  * @param relPath
  */
-async function reorganizeFiles(filesObject, targetStructure = '/{year}/{month}/', dateThreshold, relPath) {
+async function getReorganizeItems(filesObject, targetStructure = '/{year}/{month}/', dateThreshold, relPath) {
     if (!dateThreshold) { dateThreshold =  new Date('1995-01-01'); }
     const files = Object.values(filesObject);
 
@@ -131,4 +131,4 @@ async function reorganizeFiles(filesObject, targetStructure = '/{year}/{month}/'
     return reorganize;
 }
 
-export default reorganizeFiles;
+export default getReorganizeItems;

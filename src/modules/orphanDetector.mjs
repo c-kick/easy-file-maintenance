@@ -8,7 +8,7 @@ import {rebasePath} from "../utils/helpers.mjs";
  * @param {string} binPath - The path to the recycle bin.
  * @returns {Promise<object[]>} - Array of orphan files.
  */
-async function findOrphans(filesObject, extensions, binPath) {
+async function getOrphanItems(filesObject, extensions, binPath) {
   // Convert filesObject to an array of file entries
   const files = Object.values(filesObject);
   const orphans = [];
@@ -42,4 +42,4 @@ async function findOrphans(filesObject, extensions, binPath) {
   return orphans;
 }
 
-export default findOrphans;
+export default getOrphanItems;

@@ -1,6 +1,6 @@
 export default {
   debugLevel:     "info",
-  scanPath:       "/mnt/d/Projects/Stockfoto\'s/NOK Academy/23-5-2018",
+  scanPath:       "/mnt/d/Projects/Stockfoto\'s/NOK Academy",
   recycleBinPath: "/mnt/d/BIN",
   actions:        [
     "reorganize",
@@ -8,5 +8,6 @@ export default {
     "orphans",
     "permissions",
     "cleanup",
+    "post-cleanup"
   ]
 };

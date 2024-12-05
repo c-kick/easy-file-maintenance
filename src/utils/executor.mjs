@@ -3,134 +3,81 @@ import {doHeader, userConfirm} from "./helpers.mjs";
 import fs from 'fs/promises';
 import fsExtra from 'fs-extra';
 import path from 'path';
+import scanDirectory from "../modules/scanner.mjs";
+import configLoader from "../modules/configLoader.mjs";
+import getCleanUpItems from "../modules/getCleanUpItems.mjs";
 
-function preProcessOps(operations, action) {
-    return Object.entries(operations).reduce((acc, [key, value]) => {
-        if (value[action]) {
-            acc.actionItems[key] = value;
-        } else {
-            acc.filteredItems[key] = value;
+export async function postCleanup() {
+    let success = true;
+    let sizeAffected = 0;
+    const config = configLoader;
+    logger.start('Rescanning directory...');
+    let scan = await scanDirectory(config.scanPath, config, 0);
+    logger.succeed(`Directory rescanned.`);
+    logger.start('Checking for items to cleanup...');
+    const cleanupItems = await getCleanUpItems(scan.results, config.scanPath, config.recycleBinPath);
+    logger.succeed(`Found ${cleanupItems.length} items requiring post-clean up.`);
+    if (cleanupItems.length > 0) {
+        logger.start('Cleaning up...');
+        for (const item of cleanupItems) {
+            const result = await doOperation(item);
+            if (result) sizeAffected += item.size ?? 0;
         }
-        return acc;
-    }, { actionItems: {}, filteredItems: {} });
-}
-
-function rearrangeOperations(operations) {
-    const rearranged = {
-        cleanup: [],
-        duplicate: [],
-        orphan: [],
-        permissions: [],
-        reorganize: []
-    };
-
-    const remaining = { ...operations };
-
-    // Step 1: Filter items with 'cleanup' property and add to 'cleanup' group
-    for (const [key, value] of Object.entries(remaining)) {
-        if (value.cleanup) {
-            rearranged.cleanup.push({ path: key, ...value });
-            delete remaining[key];
-        }
+        logger.succeed(`Cleanup done. ${sizeAffected} bytes saved.`);
     }
-
-    // Step 2: Filter items with 'duplicate' property and add to 'duplicate' group
-    for (const [key, value] of Object.entries(remaining)) {
-        if (value.duplicate) {
-            rearranged.duplicate.push({ path: key, ...value });
-            delete remaining[key];
-        }
-    }
-
-    // Step 3: Filter items with 'orphan' property and add to 'orphan' group
-    for (const [key, value] of Object.entries(remaining)) {
-        if (value.orphan) {
-            rearranged.orphan.push({ path: key, ...value });
-            delete remaining[key];
-        }
-    }
-
-    // Step 4: For the remaining items, add them to 'permissions', 'reorganize', etc., if they have the respective properties
-    for (const [key, value] of Object.entries(remaining)) {
-        if (value.permissions) {
-            rearranged.permissions.push({ path: key, ...value });
-        }
-        if (value.reorganize) {
-            rearranged.reorganize.push({ path: key, ...value });
-        }
-    }
-
-    return rearranged;
-}
-
-/**
- * Parses the permission value to a format suitable for fs.chmod().
- * @param {string | number} permission - The permission value (e.g., '664', 664, '0o664').
- * @returns {number} - The permission value as an octal number.
- */
-function parsePermission(permission) {
-    if (typeof permission === 'number') {
-        return parseInt(permission.toString(), 8);
-    } else if (typeof permission === 'string') {
-        // Convert the string to a number using base 8 if it's not already in octal format
-        if (permission.startsWith('0o')) {
-            return parseInt(permission, 8);
-        } else {
-            return parseInt(permission, 8);
-        }
-    } else {
-        throw new Error('Invalid permission type. Must be a string or number.');
-    }
+    return {success, sizeAffected};
 }
 
 /**
  * Performs the specified file operation.
- * @param {string} filePath - Path to the file to operate on.
- * @param {object} operation - Operation details. Can include 'move_to' or 'chmod'.
- * @returns {Promise<boolean>} - Resolves to true if the operation was successful, otherwise false.
+ * @param {object} item - The item to work on
+ * @returns {Promise<{}>} - Resolves to true if the operation was successful, otherwise false.
  */
-async function doOperation(filePath, operation) {
+async function doOperation(item) {
     let success = false;
+    let size = 0;
 
     try {
-        if (operation.hasOwnProperty('move_to')) {
-            const destinationPath = operation.move_to;
+        if (item.hasOwnProperty('move_to')) {
+            const destinationPath = item.move_to;
 
             // Create target directory if it does not exist
             await fs.mkdir(path.dirname(destinationPath), { recursive: true });
 
             // Move the file
-            fsExtra.moveSync(filePath, destinationPath, { overwrite: true });
+            fsExtra.moveSync(item.path, destinationPath, { overwrite: true });
             success = true;
-            console.log(`Moved: ${filePath}\n To: ${destinationPath}`);
-        } else if (operation.hasOwnProperty('chmod')) {
-            const permissions = parsePermission(operation.chmod);
-
+            size = item.size ?? 0;
+        } else if (item.hasOwnProperty('change_mode')) {
             // Change file permissions
-            await fs.chmod(filePath, permissions);
+            await fs.chmod(item.path, item.fsChmodValue);
             success = true;
-            console.log(`Changed permissions for: ${filePath} to ${operation.chmod}`);
+            size = item.size ?? 0;
+        } else if (item.hasOwnProperty('action')) {
+            // Change file permissions
+            const result = await item.action(item);
+            success = result.success;
+            size = result.sizeAffected ?? (item.size ?? 0);
         }
     } catch (error) {
-        console.error(`Failed to execute operation on ${filePath}:`, error);
+        logger.fail(`Failed to execute operation on ${item.path}:`, error);
     }
 
-    return success;
+    return {success, size};
 }
 
 /**
  * Executes pending file operations based on user confirmation.
- * @param {object[]} operations - List of operations to perform.
+ * @param {object[{}]} operations - List of operations to perform.
  * @returns {Promise<void>}
  */
 async function executeOperations(operations) {
     logger.succeed('Executing pending operations...');
-    const filteredOps = rearrangeOperations(operations);
     const answers = {};
     let yesAllActions = false;
-    let bytesHandled = 0;
-    for (const operation in filteredOps) {
-        if (filteredOps.hasOwnProperty(operation) && filteredOps[operation].length) {
+    let sizeAffected = 0;
+    for (const operation in operations) {
+        if (operations.hasOwnProperty(operation) && operations[operation].length) {
 
             doHeader(operation);
             let proceed = false;
@@ -140,14 +87,14 @@ async function executeOperations(operations) {
             } else if (answers[operation] && answers[operation] === 'c') {
                 logger.fail(`Stop ${operation} actions`);
             } else {
-                answers[operation] = await userConfirm(`Start ${operation} handling for ${filteredOps[operation].length} items?`);
+                answers[operation] = await userConfirm(`Start ${operation} handling for ${operations[operation].length} items?`);
 
                 if (['s'].includes(answers[operation])) {
                     console.log(`Items that will be handled:`);
-                    filteredOps[operation].forEach(item => {
+                    operations[operation].forEach(item => {
                         console.log(item.path, item[operation]);
                     })
-                    answers[operation] = await userConfirm(`Start ${operation} handling for these ${filteredOps[operation].length} items?`);
+                    answers[operation] = await userConfirm(`Start ${operation} handling for these ${operations[operation].length} items?`);
                 }
 
                 proceed = ['y','a'].includes(answers[operation]);
@@ -164,8 +111,9 @@ async function executeOperations(operations) {
             }
 
             if (proceed) {
-                const actions = filteredOps[operation];
+                const actions = operations[operation];
                 for (const item of actions) {
+                    console.log(item);
                     if ((answers[operation] && answers[operation] === 'c')) {
                         logger.warn(`Not handling ${item.path} (${answers[operation]})`);
                     } else {
@@ -174,8 +122,10 @@ async function executeOperations(operations) {
                             answers[operation] = await userConfirm(`Handle ${operation} for "${item.path}"?`, ['y', 'a', 'n', 'c']);
                         }
                         if (['y','a'].includes(answers[operation]) || yesAllItems) {
-                            const result = await doOperation(item.path, item[operation]);
-                            if (result) bytesHandled += item[operation].size ?? 0;
+
+                            const result = await doOperation(item);
+
+                            if (result.success) sizeAffected += result.size ?? 0;
                         } else if (['n', 'c'].includes(answers[operation])) {
                             logger.warn(`Not handling "${item.path}" (${answers[operation]})`);
                         }
@@ -186,8 +136,9 @@ async function executeOperations(operations) {
 
         }
     }
+
     doHeader();
-    logger.succeed(`All actions done. ${bytesHandled} bytes saved.`);
+    logger.succeed(`All actions done. ${sizeAffected} bytes saved.`);
 }
 
 export default executeOperations;

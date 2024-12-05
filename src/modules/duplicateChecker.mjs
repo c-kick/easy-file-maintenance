@@ -71,7 +71,7 @@ function determineOriginal(files) {
  * @param {number} chunkSize - Number of bytes to hash for partial comparison.
  * @returns {Promise<Array>} - Array of duplicate groups, each with the original file and its duplicates.
  */
-async function findDuplicates(filesObject, binPath, chunkSize = CHUNK_SIZE) {
+async function getDuplicateItems(filesObject, binPath, chunkSize = CHUNK_SIZE) {
     const files = Object.values(filesObject).filter(file => file.isFile && file.size > 0);
 
     const sizeGroups = files.reduce((groups, file) => {
@@ -114,4 +114,4 @@ async function findDuplicates(filesObject, binPath, chunkSize = CHUNK_SIZE) {
     return duplicates;
 }
 
-export default findDuplicates;
+export default getDuplicateItems;

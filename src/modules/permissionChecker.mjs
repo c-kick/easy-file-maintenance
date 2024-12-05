@@ -1,32 +1,98 @@
 import fs from 'fs/promises';
 
-const debugMode = true; // Debug mode flag
+
+/**
+ * Parses the permission value to a format suitable for fs.chmod().
+ * @param {string | number} permission - The permission value (e.g., '664', 664, '0o664').
+ * @returns {number} - The permission value as an octal number.
+ */
+function parsePermission(permission) {
+    if (typeof permission === 'number') {
+        return parseInt(permission.toString(), 8);
+    } else if (typeof permission === 'string') {
+        // Convert the string to a number using base 8 if it's not already in octal format
+        if (permission.startsWith('0o')) {
+            return parseInt(permission, 8);
+        } else {
+            return parseInt(permission, 8);
+        }
+    } else {
+        throw new Error('Invalid permission type. Must be a string or number.');
+    }
+}
+
+/**
+ * Extracts and normalizes the file mode from fs.stat, formatted as a string.
+ * @param {number} mode - Mode from fs.stat.
+ * @returns {string} - Normalized mode as a string (e.g., '0777').
+ */
+function getNormalizedModeAsString(mode) {
+    return '0' + (mode & 0o777).toString(8);
+}
+
+/**
+ * Normalizes and validates permission values.
+ * Converts valid string or number representations to octal strings.
+ * @param {string|number} perm - Permission value to normalize.
+ * @returns {string} - Normalized permission value as a string (e.g., '0777').
+ * @throws {Error} - If the permission value is invalid.
+ */
+function normalizePermissionAsString(perm) {
+    let numericValue;
+
+    if (typeof perm === 'number') {
+        if (perm >= 0 && perm <= 777) {
+            numericValue = parseInt(perm.toString(), 8);
+        }
+    } else if (typeof perm === 'string') {
+        const parsed = parseInt(perm, 8);
+        if (!isNaN(parsed) && parsed >= 0 && parsed <= 0o777) {
+            numericValue = parsed;
+        }
+    }
+
+    if (numericValue === undefined) {
+        throw new Error(`Invalid permission value: ${perm}`);
+    }
+
+    return '0' + numericValue.toString(8); // Return as octal string
+}
 
 /**
  * Ensures file and directory permissions match the specified CHMOD values.
  * @param {object} filesObject - Object containing both 'files' and 'directories' from the scanner.
- * @param {number} filePerm - Desired file permissions (default: 0o664).
- * @param {number} dirPerm - Desired directory permissions (default: 0o775).
+ * @param {string|number} filePerm - Desired file permissions (default: '664').
+ * @param {string|number} dirPerm - Desired directory permissions (default: '775').
  * @returns {Promise<object[]>} - Array of objects representing files/directories with incorrect permissions.
  */
-async function checkPermissions(filesObject, filePerm = 664, dirPerm = 775) {
+async function getPermissionFiles(filesObject, filePerm = '664', dirPerm = '774') {
     const wrongPerms = [];
+
+    // Normalize desired permissions to strings
+    const normalizedFilePerm = normalizePermissionAsString(filePerm);
+    const normalizedDirPerm = normalizePermissionAsString(dirPerm);
 
     // Combine files and directories into a single array
     const allEntries = [
         ...Object.values(filesObject.files),
-        ...Object.values(filesObject.directories)
+        ...Object.values(filesObject.directories),
     ];
 
     for (const entry of allEntries) {
-        const desiredPerm = entry.isFile ? filePerm : dirPerm;
+        // Determine desired permission based on entry type
+        const desiredMode = entry.isFile ? normalizedFilePerm : normalizedDirPerm;
+
+        // Get stats and normalize mode as a string
         const stats = entry.stats ?? await fs.stat(entry.path);
-        const mode = parseInt((stats.mode & 0o777).toString(8), 10);
-        if (mode !== desiredPerm) {
+        const currentMode = getNormalizedModeAsString(stats.mode);
+
+        // Compare and collect incorrect permissions
+        if (currentMode !== desiredMode) {
             wrongPerms.push({
                 ...entry,
-                mode: mode,
-                chmod: desiredPerm
+                currentMode, // Current permissions as string
+                desiredMode, // Desired permissions as string (for fs.chmod)
+                fsChmodValue: parsePermission(desiredMode),
             });
         }
     }
@@ -34,4 +100,4 @@ async function checkPermissions(filesObject, filePerm = 664, dirPerm = 775) {
     return wrongPerms;
 }
 
-export default checkPermissions;
+export default getPermissionFiles;

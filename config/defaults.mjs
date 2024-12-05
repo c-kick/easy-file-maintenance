@@ -1,6 +1,14 @@
 import {normalizePath} from "../src/utils/helpers.mjs";
 
 export default {
+  filePerm: {
+    default: '664', //664 allows owner & group to read and modify, but unauthorized users only read.
+    type:    "string",
+  },
+  dirPerm: {
+    default: '775', //775 allows owner & group to read, modify, traverse, but unauthorized users only read.
+    type:    "string",
+  },
   scanPath:             {
     default: "/path/to/scan",
     type:    "string",
@@ -38,7 +46,8 @@ export default {
       "duplicates",
       "orphans",
       "permissions",
-      "cleanup"
+      "cleanup",
+      "post-cleanup"
     ],
     type:    "object",
     required: true,

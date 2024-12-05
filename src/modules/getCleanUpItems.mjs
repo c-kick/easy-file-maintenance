@@ -7,13 +7,12 @@ import {rebasePath} from "../utils/helpers.mjs";
  * @param {string} binPath - The path to the recycle bin.
  * @returns {Promise<Object[]>}
  */
-async function sweeper(filesObject, scanDir, binPath) {
+async function getCleanUpItems(filesObject, scanDir, binPath) {
     // Combine files and directories into a single array
     const allEntries = [
         ...Object.values(filesObject.files),
         ...Object.values(filesObject.directories)
     ];
-
     return allEntries
     .filter(item => (item.isEmpty || item.delete))
     .map(item => {
@@ -25,4 +24,4 @@ async function sweeper(filesObject, scanDir, binPath) {
     });
 }
 
-export default sweeper;
+export default getCleanUpItems;
