@@ -92,7 +92,7 @@ async function executeOperations(operations) {
                 if (['s'].includes(answers[operation])) {
                     console.log(`Items that will be handled:`);
                     operations[operation].forEach(item => {
-                        console.log(item.path, item[operation]);
+                        console.log(item.path, item);
                     })
                     answers[operation] = await userConfirm(`Start ${operation} handling for these ${operations[operation].length} items?`);
                 }
