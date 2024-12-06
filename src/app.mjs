@@ -9,8 +9,6 @@ import getReorganizeItems from "./modules/reorganizer.mjs";
 import getCleanUpItems from "./modules/getCleanUpItems.mjs";
 import executeOperations, {postCleanup} from './utils/executor.mjs';
 
-const debugMode = true; // Enable debugging mode for development
-
 (async () => {
     logger.start('Loading configuration...');
     try {
@@ -39,22 +37,24 @@ const debugMode = true; // Enable debugging mode for development
         };
         const destructivePaths = new Set(); // Tracks paths marked for destructive actions
 
-        //Destructive operations
+        //Destructive operations (items can either be in of these actions or in non-destructive operations, but not both)
 
         if (config.actions.includes('duplicates')) {
             logger.start('Checking for duplicate files...');
-            const duplicates = await getDuplicateItems(scan.results.files, config.recycleBinPath, config.hashByteLimit);
-            logger.succeed(`Found ${duplicates.length} duplicate groups.`);
+            const duplicates = await getDuplicateItems(scan.results.files, config.recycleBinPath, config.dupeSetExtensions, config.hashByteLimit);
+            logger.succeed(`Found ${duplicates.length} duplicates (${duplicates.filter(group => group.type === 'file').length} file duplicates & ${duplicates.filter(group => group.type === 'set').length} fileset duplicates).`);
+
             duplicates.forEach(group => {
-                group.duplicates.forEach(item => {
-                    destructivePaths.add(item.path); // Add to destructive paths
+                console.log(group.type);
+                group.duplicates.flat().forEach(duplicate => {
+                    destructivePaths.add(duplicate.path); // Add to destructive paths
                     operations.duplicate.push({
-                        path: item.path,
-                        size: item.size,
-                        original: group.original.path,
-                        move_to: item.move_to
+                        path: duplicate.path,
+                        size: duplicate.size,
+                        original: duplicate.original,
+                        move_to: duplicate.move_to
                     });
-                });
+                })
             });
         }
         if (config.actions.includes('orphans')) {
@@ -84,7 +84,7 @@ const debugMode = true; // Enable debugging mode for development
             });
         }
 
-        //Non-Destructive operations
+        //Non-Destructive operations (items can be in multiple of these actions)
 
         if (config.actions.includes('reorganize')) {
             logger.start('Checking if reorganizing is possible...');

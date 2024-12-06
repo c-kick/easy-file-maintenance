@@ -1,9 +1,8 @@
-
 import fs from 'fs/promises';
 import crypto from 'crypto';
 import pLimit from 'p-limit'; // Use this library to control concurrency
-import {extractOldestDate} from "./reorganizer.mjs";
 import {rebasePath} from "../utils/helpers.mjs";
+import logger from "../utils/logger.mjs";
 
 const CHUNK_SIZE = 2048; // Default chunk size for partial hashing
 const HASH_LIMIT = pLimit(10); // Limit concurrency to 10
@@ -19,11 +18,14 @@ async function hashFileChunk(filePath, chunkSize = CHUNK_SIZE) {
     const buffer = Buffer.alloc(chunkSize);
     try {
         await fileHandle.read(buffer, 0, chunkSize, 0);
-        const hash = crypto.createHash('md5').update(buffer).digest('hex');
-        return hash;
+        return crypto.createHash('md5').update(buffer).digest('hex').toString();
     } finally {
         await fileHandle.close();
     }
+}
+
+function hashString(string) {
+    return crypto.createHash('md5').update(string).digest('hex').toString();
 }
 
 /**
@@ -62,52 +64,111 @@ function determineOriginal(files) {
     return oldestFile;
 }
 
+/**
+ * Groups files by their prefix (base name) based on a set of allowed extensions.
+ *
+ * @param {{}} files - An object of files to be grouped.
+ * @param {string[]} extensions - An array of file extensions to include in the grouping (e.g., ['jpg', 'jpeg', 'mp4', 'avi']).
+ * @param chunkSize
+ * @returns {Promise<[]>} - An array of groups, where each group is an array of file names sharing the same base name.
+ */
+async function smartGroupFiles(files, extensions, chunkSize) {
+    const pattern = new RegExp(`(.*)\\.(${extensions.join('|')})$`, 'i');
+    const itemGroups = [];
+    const returnData = {};
+    const processedItems = new Set();
+
+    files.forEach(item => {
+        // Skip items that have already been processed
+        if (processedItems.has(item)) {
+            return;
+        }
+
+        const match = item.path.match(pattern);
+        let relatedItems = [];
+
+        if (match) {
+            const baseName = match[1];
+            // Find all items with the same base name
+            relatedItems = files.filter(i => !i.path.match(pattern) && i.path.includes(baseName));
+
+            // Add them to the return object
+            itemGroups.push([item, ...relatedItems]);
+
+            // Mark all related items as processed
+            relatedItems.forEach(i => processedItems.add(i));
+        } else {
+            // Single file match
+            itemGroups.push([item]);
+        }
+    });
+
+    for (const group of itemGroups) {
+        const hashedGroup = await Promise.all(
+          group.map(file => HASH_LIMIT(async () => {
+              return {...file, hash: await hashFileChunk(file.path, chunkSize)}
+          }))
+        );
+        const groupHash = hashString(hashedGroup.map(file => file.hash).join());
+
+        (returnData[groupHash] = returnData[groupHash] ?? []).push(hashedGroup)
+    }
+
+    return Object.entries(returnData).filter(([key, value]) => value.length > 1);
+}
 
 
 /**
  * Finds duplicate files based on size, hash, and sibling file filtering.
  * @param {object} filesObject - Object containing file details from the scanner.
  * @param {string} binPath - The path to the recycle bin.
+ * @param dupeSetExts
  * @param {number} chunkSize - Number of bytes to hash for partial comparison.
  * @returns {Promise<Array>} - Array of duplicate groups, each with the original file and its duplicates.
  */
-async function getDuplicateItems(filesObject, binPath, chunkSize = CHUNK_SIZE) {
-    const files = Object.values(filesObject).filter(file => file.isFile && file.size > 0);
-
-    const sizeGroups = files.reduce((groups, file) => {
-        (groups[file.size] = groups[file.size] || []).push(file);
-        return groups;
-    }, {});
-
+async function getDuplicateItems(filesObject, binPath, dupeSetExts = ['jpg', 'jpeg', 'mp4', 'avi'], chunkSize = CHUNK_SIZE) {
     const duplicates = [];
 
-    for (const [size, group] of Object.entries(sizeGroups)) {
-        if (group.length < 2) continue; // Skip unique sizes
+    // Pre-filter files object to only retain files that actually have a size
+    const files = Object.values(filesObject).filter(file => file.isFile && file.size > 0);
 
-        // Concurrently hash file chunks
-        const hashPromises = group.map(file => HASH_LIMIT(() => hashFileChunk(file.path, chunkSize)));
-        const hashes = await Promise.all(hashPromises);
+    // Smart group these files to create single- or multi filesets, and compute hashes for all these
+    const smartSizeGroups = await smartGroupFiles(files, dupeSetExts, chunkSize);
 
-        // Group by hash and determine duplicates
-        const hashGroups = hashes.reduce((hashMap, hash, index) => {
-            if (hash) {
-                (hashMap[hash] = hashMap[hash] || []).push(group[index]);
-        }
-            return hashMap;
-        }, {});
+    logger.text(`Found ${smartSizeGroups.length} suspected duplicates.`);
 
-        // Collect duplicates and determine original files
-        for (const [hash, hashGroup] of Object.entries(hashGroups)) {
-            if (hashGroup.length > 1) {
-                const original = determineOriginal(hashGroup);
-                const duplicatesOnly = hashGroup.filter(file => file !== original).map(item => {
-                    return {
-                        ...item,
-                        move_to: rebasePath(binPath, item.path),
-                    }
-                });
-                duplicates.push({ original, duplicates: duplicatesOnly });
-            }
+    for (const [hash, itemSet] of smartSizeGroups) {
+        let single = itemSet.every(items => items.length === 1);
+        console.log(`Duplicate set: ${hash}`);
+        const fileDupes = itemSet.flat();
+        const originalFile = determineOriginal(fileDupes);
+
+        if (single) {
+
+            console.log(`Type: File dupes`)
+            const duplicatesOnly = fileDupes.filter(file => file !== originalFile).map(item => {
+                return {
+                    ...item,
+                    original: originalFile.path,
+                    move_to: rebasePath(binPath, item.path),
+                }
+            });
+            duplicates.push({ type: 'file', original: originalFile, duplicates: duplicatesOnly });
+
+        } else {
+
+            console.log(`Type: Fileset dupes`);
+            //find the original file, and select the 'original' set based on in which set we find it
+            const originalSet = itemSet.find(subArray => subArray.includes(originalFile));
+            const duplicatesOnly = itemSet.filter(set => set !== originalSet).map(item => item.map(item => {
+                return {
+                    ...item,
+                    original: originalSet.filter(origItem => origItem.hash === item.hash)[0].path,
+                    move_to: rebasePath(binPath, item.path),
+                }
+            }));
+            duplicates.push({ type: 'set', original: originalSet, duplicates: duplicatesOnly });
+
         }
     }
 
