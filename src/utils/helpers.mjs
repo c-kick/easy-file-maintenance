@@ -1,6 +1,8 @@
 import path from "path";
 import readline from 'readline';
 import logger from '../utils/logger.mjs';
+import fs from "fs/promises";
+import crypto from "crypto";
 
 // Normalizes a given path, removing any trailing slashes and handling relative paths
 export function normalizePath(thisPath) {
@@ -80,4 +82,55 @@ export function doHeader(message = '', characters = 50) {
 
   // Output the header to the console
   console.log(header);
+}
+
+
+/**
+ * Hashes the first CHUNK_SIZE bytes of a file.
+ * @param {string} filePath - Path to the file.
+ * @param {number} chunkSize - Number of bytes to hash.
+ * @returns {Promise<string>} - The hash of the file chunk.
+ */
+export async function hashFileChunk(filePath, chunkSize = CHUNK_SIZE) {
+  const fileHandle = await fs.open(filePath, 'r');
+  const buffer = Buffer.alloc(chunkSize);
+  try {
+    await fileHandle.read(buffer, 0, chunkSize, 0);
+    return crypto.createHash('md5').update(buffer).digest('hex').toString();
+  } finally {
+    await fileHandle.close();
+  }
+}
+
+/**
+ * Generates an MD5 hash for a given string.
+ * @param {string} string - The input string to hash.
+ * @returns {string} - The MD5 hash of the input string.
+ */
+export function hashString(string) {
+  return crypto.createHash('md5').update(string).digest('hex').toString();
+}
+
+/**
+ * Executes an array of asynchronous tasks with a concurrency limit.
+ *
+ * @param {import('p-limit').Limit} limit - A concurrency limit instance from the `p-limit` library.
+ * @param {Array<() => Promise<any>>} tasks - An array of asynchronous tasks, where each task is a function that returns a Promise.
+ * @returns {Promise<Array<any>>} - A Promise that resolves to an array of results from the tasks, maintaining the order of the input tasks.
+ *
+ * @example
+ * import pLimit from 'p-limit';
+ *
+ * const limit = pLimit(5); // Allow up to 5 concurrent tasks
+ * const tasks = [
+ *   async () => await fetchData(1),
+ *   async () => await fetchData(2),
+ *   async () => await fetchData(3),
+ * ];
+ *
+ * const results = await withConcurrency(limit, tasks);
+ * console.log(results);
+ */
+export async function withConcurrency(limit, tasks) {
+  return Promise.all(tasks.map(task => limit(() => task())));
 }

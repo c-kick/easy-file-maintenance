@@ -1,76 +1,76 @@
 import fs from 'fs/promises';
 import crypto from 'crypto';
 import pLimit from 'p-limit'; // Use this library to control concurrency
-import {rebasePath} from "../utils/helpers.mjs";
+import {hashFileChunk, hashString, rebasePath, withConcurrency} from "../utils/helpers.mjs";
 import logger from "../utils/logger.mjs";
 
 const CHUNK_SIZE = 2048; // Default chunk size for partial hashing
 const HASH_LIMIT = pLimit(10); // Limit concurrency to 10
 
 /**
- * Hashes the first CHUNK_SIZE bytes of a file.
- * @param {string} filePath - Path to the file.
- * @param {number} chunkSize - Number of bytes to hash.
- * @returns {Promise<string>} - The hash of the file chunk.
- */
-async function hashFileChunk(filePath, chunkSize = CHUNK_SIZE) {
-    const fileHandle = await fs.open(filePath, 'r');
-    const buffer = Buffer.alloc(chunkSize);
-    try {
-        await fileHandle.read(buffer, 0, chunkSize, 0);
-        return crypto.createHash('md5').update(buffer).digest('hex').toString();
-    } finally {
-        await fileHandle.close();
-    }
-}
-
-function hashString(string) {
-    return crypto.createHash('md5').update(string).digest('hex').toString();
-}
-
-/**
- * Determines the original file from a group of duplicates based on the oldest creation or modification date,
- * or the shortest filename as a tiebreaker.
- * @param {object[]} files - Array of file objects representing duplicates.
- * @returns {object} - The original file object.
+ * Determines the "original" file from a list of duplicate files.
+ *
+ * This function evaluates an array of file objects and identifies the original file
+ * based on the following criteria:
+ *
+ * 1. **Oldest Date**: The file with the earliest creation or modification date is considered the original.
+ * 2. **Shortest Filename (Tie-breaker)**: If two or more files have identical timestamps, the file
+ *    with the shortest filename is chosen as the original.
+ *
+ * How It Works:
+ * - The function uses the `Array.prototype.reduce` method to iterate over the array of files.
+ * - For each file, the earliest of its creation and modification dates is calculated.
+ * - These timestamps are compared to determine the oldest file. If the timestamps are identical,
+ *   the filename length is compared.
+ *
+ * @param {object[]} files - Array of file objects. Each file object should include:
+ *   - {string} name - The file name.
+ *   - {string} [createdTime] - The file's creation date (optional).
+ *   - {string} [modifiedTime] - The file's last modification date (optional).
+ * @returns {object} - The file object deemed as the "original" based on the described criteria.
+ *
+ * @example
+ * const files = [
+ *   { name: 'fileA.txt', createdTime: '2022-01-01T10:00:00Z', modifiedTime: '2022-01-02T10:00:00Z' },
+ *   { name: 'fileB.txt', createdTime: '2022-01-01T08:00:00Z', modifiedTime: '2022-01-01T12:00:00Z' },
+ *   { name: 'fileC.txt', createdTime: '2022-01-01T08:00:00Z', modifiedTime: '2022-01-01T12:00:00Z' },
+ * ];
+ *
+ * const originalFile = determineOriginal(files);
+ * console.log(originalFile);
+ * // Output: { name: 'fileB.txt', createdTime: '2022-01-01T08:00:00Z', modifiedTime: '2022-01-01T12:00:00Z' }
  */
 function determineOriginal(files) {
-    let oldestFile = files[0];
-    let oldestDate = new Date(Math.min(
-      files[0].createdTime ? new Date(files[0].createdTime).getTime() : Infinity,
-      files[0].modifiedTime ? new Date(files[0].modifiedTime).getTime() : Infinity
-    ));
+    return files.reduce((oldest, file) => {
+        // Determine the earliest timestamp for the current file
+        const fileTimestamp = Math.min(
+          new Date(file.createdTime ?? Infinity).getTime(),
+          new Date(file.modifiedTime ?? Infinity).getTime()
+        );
 
-    for (const file of files) {
-        // Convert created and modified times to timestamps
-        const createdTimestamp = file.createdTime ? new Date(file.createdTime).getTime() : Infinity;
-        const modifiedTimestamp = file.modifiedTime ? new Date(file.modifiedTime).getTime() : Infinity;
+        // Determine the earliest timestamp for the current oldest file
+        const oldestTimestamp = Math.min(
+          new Date(oldest.createdTime ?? Infinity).getTime(),
+          new Date(oldest.modifiedTime ?? Infinity).getTime()
+        );
 
-        // Determine the earliest timestamp for this file
-        const fileTimestamp = Math.min(createdTimestamp, modifiedTimestamp);
-
-        // If this file is older, update oldestFile and oldestDate
-        if (fileTimestamp < oldestDate.getTime()) {
-            oldestDate = new Date(fileTimestamp);
-            oldestFile = file;
-        } else if (fileTimestamp === oldestDate.getTime()) {
-            // If timestamps are identical, select the file with the shortest name
-            if (file.name.length < oldestFile.name.length) {
-                oldestFile = file;
-            }
+        // Compare timestamps and use filename length as a tie-breaker
+        if (fileTimestamp < oldestTimestamp ||
+          (fileTimestamp === oldestTimestamp && file.name.length < oldest.name.length)) {
+            return file;
         }
-    }
-
-    return oldestFile;
+        return oldest;
+    }, files[0]);
 }
 
 /**
  * Groups files by their prefix (base name) based on a set of allowed extensions.
  *
- * @param {{}} files - An object of files to be grouped.
- * @param {string[]} extensions - An array of file extensions to include in the grouping (e.g., ['jpg', 'jpeg', 'mp4', 'avi']).
- * @param chunkSize
- * @returns {Promise<[]>} - An array of groups, where each group is an array of file names sharing the same base name.
+ * @param {object[]} files - Array of file objects to be grouped. Each file object should include:
+ *   - {string} path - The full file path.
+ * @param {string[]} extensions - Array of file extensions that are likely accompanied by metadata-files (e.g., ['jpg', 'jpeg', 'mp4', 'avi']).
+ * @param {number} chunkSize - Number of bytes to hash for grouping (defaults to CHUNK_SIZE).
+ * @returns {Promise<object[]>} - Array of groups. Each group contains an array of file objects sharing the same base name.
  */
 async function smartGroupFiles(files, extensions, chunkSize) {
     const pattern = new RegExp(`(.*)\\.(${extensions.join('|')})$`, 'i');
@@ -104,11 +104,9 @@ async function smartGroupFiles(files, extensions, chunkSize) {
     });
 
     for (const group of itemGroups) {
-        const hashedGroup = await Promise.all(
-          group.map(file => HASH_LIMIT(async () => {
-              return {...file, hash: await hashFileChunk(file.path, chunkSize)}
-          }))
-        );
+        const hashedGroup = await withConcurrency(HASH_LIMIT, group.map(file => async () => {
+            return { ...file, hash: await hashFileChunk(file.path, chunkSize) };
+        }));
         const groupHash = hashString(hashedGroup.map(file => file.hash).join());
 
         (returnData[groupHash] = returnData[groupHash] ?? []).push(hashedGroup)
@@ -117,14 +115,17 @@ async function smartGroupFiles(files, extensions, chunkSize) {
     return Object.entries(returnData).filter(([key, value]) => value.length > 1);
 }
 
-
 /**
- * Finds duplicate files based on size, hash, and sibling file filtering.
- * @param {object} filesObject - Object containing file details from the scanner.
+ * Identifies duplicate files based on size, hash, and sibling file filtering.
+ *
+ * @param {object} filesObject - Object mapping file paths to file details. Each file object should include:
+ *   - {boolean} isFile - Whether the entry is a file.
+ *   - {number} size - The file size in bytes.
+ *   - {string} path - The file path.
  * @param {string} binPath - The path to the recycle bin.
- * @param dupeSetExts
- * @param {number} chunkSize - Number of bytes to hash for partial comparison.
- * @returns {Promise<Array>} - Array of duplicate groups, each with the original file and its duplicates.
+ * @param {string[]} [dupeSetExts=['jpg', 'jpeg', 'mp4', 'avi']] - Extensions to consider for duplicate grouping - see docs for smartGroupFiles.
+ * @param {number} chunkSize - Number of bytes to hash for partial comparison (defaults to CHUNK_SIZE).
+ * @returns {Promise<Array>} - Array of duplicate groups. Each group includes the original file and its duplicates.
  */
 async function getDuplicateItems(filesObject, binPath, dupeSetExts = ['jpg', 'jpeg', 'mp4', 'avi'], chunkSize = CHUNK_SIZE) {
     const duplicates = [];
@@ -139,37 +140,43 @@ async function getDuplicateItems(filesObject, binPath, dupeSetExts = ['jpg', 'jp
 
     for (const [hash, itemSet] of smartSizeGroups) {
         let single = itemSet.every(items => items.length === 1);
-        console.log(`Duplicate set: ${hash}`);
+        //console.log(`Duplicate set: ${hash}`);
         const fileDupes = itemSet.flat();
         const originalFile = determineOriginal(fileDupes);
+        let originalSet;
+        let duplicatesOnly;
 
         if (single) {
 
-            console.log(`Type: File dupes`)
-            const duplicatesOnly = fileDupes.filter(file => file !== originalFile).map(item => {
+            //single file dupes
+            duplicatesOnly = fileDupes.filter(file => file !== originalFile).map(item => {
                 return {
                     ...item,
                     original: originalFile.path,
                     move_to: rebasePath(binPath, item.path),
                 }
             });
-            duplicates.push({ type: 'file', original: originalFile, duplicates: duplicatesOnly });
 
         } else {
 
-            console.log(`Type: Fileset dupes`);
-            //find the original file, and select the 'original' set based on in which set we find it
-            const originalSet = itemSet.find(subArray => subArray.includes(originalFile));
-            const duplicatesOnly = itemSet.filter(set => set !== originalSet).map(item => item.map(item => {
+            //fileset dupes
+            //find the original file, and select the 'original set' based on in which set we find it
+            originalSet = itemSet.find(subArray => subArray.includes(originalFile));
+            duplicatesOnly = itemSet.filter(set => set !== originalSet).map(item => item.map(item => {
                 return {
                     ...item,
                     original: originalSet.filter(origItem => origItem.hash === item.hash)[0].path,
                     move_to: rebasePath(binPath, item.path),
                 }
             }));
-            duplicates.push({ type: 'set', original: originalSet, duplicates: duplicatesOnly });
 
         }
+
+        duplicates.push({
+            type: single ? 'file' : 'set',
+            original: single ? originalFile : originalSet,
+            duplicates: duplicatesOnly
+        });
     }
 
     return duplicates;

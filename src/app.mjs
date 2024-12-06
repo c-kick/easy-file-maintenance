@@ -45,7 +45,6 @@ import executeOperations, {postCleanup} from './utils/executor.mjs';
             logger.succeed(`Found ${duplicates.length} duplicates (${duplicates.filter(group => group.type === 'file').length} file duplicates & ${duplicates.filter(group => group.type === 'set').length} fileset duplicates).`);
 
             duplicates.forEach(group => {
-                console.log(group.type);
                 group.duplicates.flat().forEach(duplicate => {
                     destructivePaths.add(duplicate.path); // Add to destructive paths
                     operations.duplicate.push({
