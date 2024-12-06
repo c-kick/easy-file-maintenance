@@ -32,7 +32,7 @@ export default {
     validate: (value) => /^\/(?:\{(year|month|day)\}\/?)+$/.test(value),
   },
   hashByteLimit:        {
-    default: 2048,
+    default: 131072,
     type:    "number",
   },
   debugLevel:           {

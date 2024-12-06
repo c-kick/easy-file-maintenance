@@ -2,7 +2,7 @@ import pLimit from 'p-limit'; // Use this library to control concurrency
 import {hashFileChunk, hashString, rebasePath, withConcurrency} from "../utils/helpers.mjs";
 import logger from "../utils/logger.mjs";
 
-const CHUNK_SIZE = 2048; // Default chunk size for partial hashing
+const CHUNK_SIZE = 131072; // Default chunk size for partial hashing
 const HASH_LIMIT = pLimit(10); // Limit concurrency to 10
 
 /**
