@@ -1,6 +1,14 @@
 import {normalizePath} from "../src/utils/helpers.mjs";
 
 export default {
+  owner_user: {
+    type:    "string",
+    required: 'permissions'
+  },
+  owner_group: {
+    type:    "string",
+    required: 'permissions'
+  },
   filePerm: {
     default: '664', //664 allows owner & group to read and modify, but unauthorized users only read.
     type:    "string",
@@ -46,6 +54,7 @@ export default {
       "duplicates",
       "orphans",
       "permissions",
+      "ownership",
       "cleanup",
       "post-cleanup"
     ],

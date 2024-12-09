@@ -45,17 +45,19 @@ const logger = {
     return logger; // Enable chaining
   },
   warn: (message) => {
-    if (spinner) {
-      spinner.warn(`\x1b[33m${message}\x1b[0m`);
-      spinner = null;
+    if (!spinner) {
+      spinner = ora().start();
     }
+    spinner.warn(`\x1b[33m${message}\x1b[0m`);
+    spinner = null;
     return logger; // Enable chaining
   },
   fail: (message) => {
-    if (spinner) {
-      spinner.fail(`\x1b[31m${message}\x1b[0m`);
-      spinner = null;
+    if (!spinner) {
+      spinner = ora().start();
     }
+    spinner.fail(`\x1b[31m${message}\x1b[0m`);
+    spinner = null;
     return logger; // Enable chaining
   },
   stopAndPersist(options = {}) {

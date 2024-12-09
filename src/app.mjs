@@ -8,6 +8,7 @@ import getPermissionFiles from './modules/permissionChecker.mjs';
 import getReorganizeItems from "./modules/reorganizer.mjs";
 import getCleanUpItems from "./modules/getCleanUpItems.mjs";
 import executeOperations, {postCleanup} from './utils/executor.mjs';
+import getOwnershipFiles from "./modules/ownershipChecker.mjs";
 
 (async () => {
     logger.start('Loading configuration...');
@@ -15,8 +16,7 @@ import executeOperations, {postCleanup} from './utils/executor.mjs';
         // Step 1: Load Configuration
         const config = configLoader;
         if (!config) {
-            logger.fail();
-            console.error('Configuration invalid, cannot continue.');
+            logger.fail('Configuration invalid, cannot continue.');
             process.exit(1);
         }
         logger.succeed('Configuration loaded.');
@@ -33,6 +33,7 @@ import executeOperations, {postCleanup} from './utils/executor.mjs';
             duplicate: [],
             orphan: [],
             permissions: [],
+            ownership: [],
             reorganize: []
         };
         const destructivePaths = new Set(); // Tracks paths marked for destructive actions
@@ -100,19 +101,46 @@ import executeOperations, {postCleanup} from './utils/executor.mjs';
         }
 
         if (config.actions.includes('permissions')) {
-            logger.start('Checking permissions...');
-            const wrongPermissions = await getPermissionFiles(scan.results, config.filePerm, config.dirPerm);
-            logger.succeed(`Found ${wrongPermissions.length} items with wrong permissions.`);
-            wrongPermissions.forEach(item => {
-                if (!destructivePaths.has(item.path)) { // Skip if path is in destructivePaths
-                    operations.permissions.push({
-                        path: item.path,
-                        mode: item.currentMode,
-                        change_mode: item.desiredMode,
-                        fsChmodValue: item.fsChmodValue
-                    });
-                }
-            });
+            if (config.filePerm && config.dirPerm) {
+                logger.start('Checking permissions...');
+                const wrongPermissions = await getPermissionFiles(scan.results, config.filePerm, config.dirPerm);
+                logger.succeed(`Found ${wrongPermissions.length} items with wrong permissions.`);
+                wrongPermissions.forEach(item => {
+                    if (!destructivePaths.has(item.path)) { // Skip if path is in destructivePaths
+                        operations.permissions.push({
+                            path: item.path,
+                            mode: item.currentMode,
+                            change_mode: item.desiredMode,
+                            fsChmodValue: item.fsChmodValue
+                        });
+                    }
+                });
+            } else {
+                logger.warn('Skipping permission checks due to missing config values (filePerm & dirPerm).')
+            }
+        }
+
+        if (config.actions.includes('ownership')) {
+            if (config.owner_user && config.owner_group) {
+                logger.start('Checking ownership...');
+                const wrongOwnership = await getOwnershipFiles(scan.results, config.owner_user, config.owner_group);
+                logger.succeed(`Found ${wrongOwnership.length} items with wrong ownership.`);
+                wrongOwnership.forEach(item => {
+                    if (!destructivePaths.has(item.path)) { // Skip if path is in destructivePaths
+                        operations.ownership.push({
+                            path: item.path,
+                            owner: item.currentUser,
+                            group: item.currentGroup,
+                            new_owner: item.expectedUser,
+                            new_group: item.expectedGroup,
+                            new_owner_id: item.expectedUid,
+                            new_group_id: item.expectedGid,
+                        });
+                    }
+                });
+            } else {
+                logger.warn('Skipping ownership checks due to missing config values (owner_user & owner_group).')
+            }
         }
 
         if (config.actions.includes('post-cleanup')) {

@@ -53,6 +53,10 @@ async function doOperation(item) {
             await fs.chmod(item.path, item.fsChmodValue);
             success = true;
             size = item.size ?? 0;
+        } else if (item.hasOwnProperty('new_owner_id') && item.hasOwnProperty('new_group_id')) {
+            // Change ownership
+            await fs.chown(item.path, item.new_owner_id, item.new_group_id);
+            success = true;
         } else if (item.hasOwnProperty('action')) {
             // Change file permissions
             const result = await item.action(item);
@@ -61,6 +65,7 @@ async function doOperation(item) {
         }
     } catch (error) {
         logger.fail(`Failed to execute operation on ${item.path}:`, error);
+        console.error(error);
     }
 
     return {success, size};
@@ -115,7 +120,8 @@ async function executeOperations(operations) {
                 for (const item of actions) {
                     console.log(item);
                     if ((answers[operation] && answers[operation] === 'c')) {
-                        logger.warn(`Not handling ${item.path} (${answers[operation]})`);
+                        logger.warn(`Not handling ${item.path} (User cancelled)`);
+                        break;
                     } else {
                         let yesAllItems = (answers[operation] && answers[operation] === 'a') || yesAllActions;
                         if (!yesAllItems) {

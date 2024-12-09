@@ -37,37 +37,44 @@ const validateAndMergeConfigs = (defaults, user) => {
     const merged = {};
 
     for (const key in defaults) {
-        const { default: defaultValue, type, validate, required } = defaults[key];
+        const { default: defaultValue, type, validate } = defaults[key];
         const userValue = user[key] !== undefined ? user[key] : defaultValue;
+        let required = defaults[key].required;
+        let forAction = '';
+
+        if (typeof required === 'string') {
+            //if required is specified as dependent on an action, check if that action has been requested to eval required
+            forAction = required;
+            required = user['actions'].includes(required);
+        }
+        const emptyButNotReq = !userValue && !required;
 
         // Type check
         if (user[key] === undefined && required) {
-            logger.fail();
-            console.error(`Error validating config: ${key} is a required setting!`);
+            logger.fail(`Error validating config: '${key}' is a required setting${forAction ? ` for action '${forAction}'` : ''}!`);
             return false;
         }
-        if (typeof userValue !== type) {
+
+        if (typeof userValue !== type && !emptyButNotReq) {
             const msg = `"${typeof userValue}" is an invalid type for "${key}". Expected "${type}".`;
             if ((typeof defaultValue === type)) {
                 console.warn(`${msg} Falling back to default: `, defaultValue);
                 merged[key] = defaultValue;
             } else {
-                logger.fail();
-                console.error(`Error validating config: ${msg} Default value ("${defaultValue}") is also invalid, or missing!`);
+                logger.fail(`Error validating config: ${msg} Default value ("${defaultValue}") is also invalid, or missing!`);
                 return false;
             }
-        } else if (validate && !validate(userValue)) {
+        } else if (validate && !validate(userValue) && !emptyButNotReq) {
             const msg = `"${userValue}" is invalid for "${key}".`;
             // Validation check
             if (validate(defaultValue)) {
-                console.warn(`${msg} Falling back to default: `, defaultValue);
+                logger.warn(`${msg} Falling back to default: `, defaultValue);
                 merged[key] = defaultValue;
             } else {
-                logger.fail();
-                console.error(`Error validating config: ${msg} Default value (${defaultValue}) also invalid, or missing!`);
+                logger.fail(`Error validating config: ${msg} Default value (${defaultValue}) also invalid, or missing!`);
                 return false;
             }
-        } else {
+        } else if (!emptyButNotReq) {
             merged[key] = userValue;
         }
     }

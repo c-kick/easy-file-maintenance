@@ -82,6 +82,8 @@ async function smartGroupFiles(files, extensions, chunkSize) {
             return;
         }
 
+        logger.text(`Checking for filesets... ${item.path}`);
+
         const match = item.path.match(pattern);
         let relatedItems = [];
 
@@ -103,6 +105,7 @@ async function smartGroupFiles(files, extensions, chunkSize) {
 
     for (const group of itemGroups) {
         const hashedGroup = await withConcurrency(HASH_LIMIT, group.map(file => async () => {
+            logger.text(`Hashing... ${file.path}`);
             return { ...file, hash: await hashFileChunk(file.path, chunkSize) };
         }));
         const groupHash = hashString(hashedGroup.map(file => file.hash).join());
@@ -138,7 +141,6 @@ async function getDuplicateItems(filesObject, binPath, dupeSetExts = ['jpg', 'jp
 
     for (const [hash, itemSet] of smartSizeGroups) {
         let single = itemSet.every(items => items.length === 1);
-        //console.log(`Duplicate set: ${hash}`);
         const fileDupes = itemSet.flat();
         const originalFile = determineOriginal(fileDupes);
         let originalSet;
