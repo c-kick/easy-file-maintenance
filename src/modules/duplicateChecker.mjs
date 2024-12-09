@@ -103,6 +103,8 @@ async function smartGroupFiles(files, extensions, chunkSize) {
         }
     });
 
+    logger.text(`Found ${itemGroups.length} potential duplicate files / filesets. Now hashing...`);
+
     for (const group of itemGroups) {
         const hashedGroup = await withConcurrency(HASH_LIMIT, group.map(file => async () => {
             logger.text(`Hashing... ${file.path}`);

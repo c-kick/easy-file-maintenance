@@ -30,7 +30,9 @@ const logger = {
     return logger; // Enable chaining
   },
   text: (message) => {
-    if (spinner) {
+    if (!spinner) {
+      spinner = ora(message).start();
+    } else {
       spinner.text = message;
     }
     return logger; // Enable chaining
