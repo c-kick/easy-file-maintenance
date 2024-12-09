@@ -3,7 +3,7 @@ import {hashFileChunk, hashString, rebasePath, withConcurrency} from "../utils/h
 import logger from "../utils/logger.mjs";
 
 const CHUNK_SIZE = 131072; // Default chunk size for partial hashing
-const HASH_LIMIT = pLimit(10); // Limit concurrency to 10
+const FILE_LIMIT = pLimit(5); // Limit concurrency to 10
 
 /**
  * Determines the "original" file from a list of duplicate files.
@@ -38,7 +38,7 @@ const HASH_LIMIT = pLimit(10); // Limit concurrency to 10
  * console.log(originalFile);
  * // Output: { name: 'fileB.txt', createdTime: '2022-01-01T08:00:00Z', modifiedTime: '2022-01-01T12:00:00Z' }
  */
-function determineOriginal(files) {
+async function determineOriginal(files) {
     return files.reduce((oldest, file) => {
         // Determine the earliest timestamp for the current file
         const fileTimestamp = Math.min(
@@ -76,6 +76,7 @@ async function smartGroupFiles(files, extensions, chunkSize) {
     const returnData = {};
     const processedItems = new Set();
 
+    //todo: fix the performance in this loop
     files.forEach(item => {
         // Skip items that have already been processed
         if (processedItems.has(item)) {
@@ -105,15 +106,19 @@ async function smartGroupFiles(files, extensions, chunkSize) {
 
     logger.text(`Found ${itemGroups.length} potential duplicate files / filesets. Now hashing...`);
 
-    for (const group of itemGroups) {
-        const hashedGroup = await withConcurrency(HASH_LIMIT, group.map(file => async () => {
+    // Wrap each group hashing task in a function
+    const tasks = itemGroups.map(group => async () => {
+        const hashedGroup = await Promise.all(group.map(async file => {
             logger.text(`Hashing... ${file.path}`);
             return { ...file, hash: await hashFileChunk(file.path, chunkSize) };
         }));
-        const groupHash = hashString(hashedGroup.map(file => file.hash).join());
 
-        (returnData[groupHash] = returnData[groupHash] ?? []).push(hashedGroup)
-    }
+        const groupHash = hashString(hashedGroup.map(file => file.hash).join());
+        (returnData[groupHash] = returnData[groupHash] ?? []).push(hashedGroup);
+    });
+
+    // Execute tasks with concurrency control
+    await withConcurrency(FILE_LIMIT, tasks);
 
     return Object.entries(returnData).filter(([key, value]) => value.length > 1);
 }
@@ -133,9 +138,11 @@ async function smartGroupFiles(files, extensions, chunkSize) {
 async function getDuplicateItems(filesObject, binPath, dupeSetExts = ['jpg', 'jpeg', 'mp4', 'avi'], chunkSize = CHUNK_SIZE) {
     const duplicates = [];
 
+    logger.text(`Filtering files first...`);
     // Pre-filter files object to only retain files that actually have a size
     const files = Object.values(filesObject).filter(file => file.isFile && file.size > 0);
 
+    logger.text(`Grouping ${files.length} files...`);
     // Smart group these files to create single- or multi filesets, and compute hashes for all these
     const smartSizeGroups = await smartGroupFiles(files, dupeSetExts, chunkSize);
 
@@ -144,7 +151,8 @@ async function getDuplicateItems(filesObject, binPath, dupeSetExts = ['jpg', 'jp
     for (const [hash, itemSet] of smartSizeGroups) {
         let single = itemSet.every(items => items.length === 1);
         const fileDupes = itemSet.flat();
-        const originalFile = determineOriginal(fileDupes);
+        const originalFile = await determineOriginal(fileDupes);
+
         let originalSet;
         let duplicatesOnly;
 

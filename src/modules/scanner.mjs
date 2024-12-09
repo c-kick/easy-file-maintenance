@@ -38,6 +38,7 @@ async function scanDirectory(dirPath, config, depth = 0) {
         path.join(config.scanPath, 'duplicates')
     ].map(p => path.resolve(p));
 
+    logger.indent();
     logger.text(`Scanning directory: ${dirPath} (${items.length} items)`);
 
     for (const item of items) {

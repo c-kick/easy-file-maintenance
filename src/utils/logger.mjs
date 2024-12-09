@@ -31,10 +31,11 @@ const logger = {
   },
   text: (message) => {
     if (!spinner) {
-      spinner = ora(message).start();
-    } else {
-      spinner.text = message;
+      spinner = ora().start();
     }
+    spinner.text = message;
+    //console.log(`[LOG] ${message}`); // Log message while updating spinner
+
     return logger; // Enable chaining
   },
   succeed: (message) => {
@@ -77,6 +78,12 @@ const logger = {
     }
     return logger; // Enable chaining
   },
+  indent: () => {
+    if (spinner) {
+      spinner.indent = 2;
+    }
+    return logger; // Enable chaining
+  }
 };
 
 export default logger;
