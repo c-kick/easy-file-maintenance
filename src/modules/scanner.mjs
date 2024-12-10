@@ -77,6 +77,8 @@ async function scanDirectory(dirPath, config, depth = 0) {
             depth,
             path: itemPath,
             name: itemName,
+            baseName: path.basename(itemName, path.extname(itemPath)),
+            extension: itemName.split('.').pop().toLowerCase(),
             dir: path.dirname(itemPath),
             size: stats.size,
             isFile: stats.isFile(),
