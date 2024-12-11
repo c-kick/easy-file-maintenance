@@ -79,9 +79,10 @@ const logger = {
     return logger; // Enable chaining
   },
   indent: () => {
-    if (spinner) {
-      spinner.indent = 2;
+    if (!spinner) {
+      spinner = ora().start();
     }
+    spinner.indent = 2;
     return logger; // Enable chaining
   }
 };

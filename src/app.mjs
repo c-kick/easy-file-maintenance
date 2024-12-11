@@ -9,6 +9,7 @@ import getReorganizeItems from "./modules/reorganizer.mjs";
 import getCleanUpItems from "./modules/getCleanUpItems.mjs";
 import executeOperations, {postCleanup} from './utils/executor.mjs';
 import getOwnershipFiles from "./modules/ownershipChecker.mjs";
+import {doHeader} from "./utils/helpers.mjs";
 
 (async () => {
     logger.start('Loading configuration...');
@@ -43,20 +44,27 @@ import getOwnershipFiles from "./modules/ownershipChecker.mjs";
         if (config.actions.includes('duplicates')) {
             logger.start('Checking for duplicate files...');
             const duplicates = await getDuplicateItems(scan.results.files, config.recycleBinPath, config.dupeSetExtensions, config.hashByteLimit);
-            logger.succeed(`Found ${duplicates.length} duplicates (${duplicates.filter(group => group.type === 'file').length} file duplicates & ${duplicates.filter(group => group.type === 'set').length} fileset duplicates).`);
+            logger.succeed(`Found a total of ${Object.values(duplicates).reduce((acc, arr) => acc + arr.length, 0)} duplicates for ${Object.entries(duplicates).length} items after hashing.`);
 
-            duplicates.forEach(group => {
-                group.duplicates.flat().forEach(duplicate => {
-                    destructivePaths.add(duplicate.path); // Add to destructive paths
+            //console.log(newDuplicates);
+            for (const duplicate in duplicates) {
+                const dupes = duplicates[duplicate];
+                console.group(`${duplicate} has ${dupes.length} duplicates:`)
+                dupes.forEach(dupe => {
+                    console.log(`${dupe.path}${dupe.isInFileset ? ' (part of a duplicate fileset)' : ''}`);
+                    console.log(`Should move to: ${dupe.move_to}`)
+                    destructivePaths.add(dupe.path); // Add to destructive paths
                     operations.duplicate.push({
-                        path: duplicate.path,
-                        size: duplicate.size,
-                        original: duplicate.original,
-                        move_to: duplicate.move_to
+                        path: dupe.path,
+                        size: dupe.size,
+                        original: duplicate,
+                        move_to: dupe.move_to
                     });
                 })
-            });
+                console.groupEnd();
+            }
         }
+
         if (config.actions.includes('orphans')) {
             logger.start('Checking for orphan files...');
             const orphans = await getOrphanItems(scan.results.files, config.orphanFileExtensions, config.recycleBinPath);
@@ -70,6 +78,7 @@ import getOwnershipFiles from "./modules/ownershipChecker.mjs";
                 });
             });
         }
+
         if (config.actions.includes('cleanup')) {
             logger.start('Checking for items to cleanup...');
             const cleanupItems = await getCleanUpItems(scan.results, config.scanPath, config.recycleBinPath);
@@ -143,15 +152,14 @@ import getOwnershipFiles from "./modules/ownershipChecker.mjs";
             }
         }
 
-        if (config.actions.includes('post-cleanup')) {
-            operations.postcleanup = [{
-                path: config.scanPath,
-                action: postCleanup
-            }];
-        }
-
         // Confirm and Execute
         await executeOperations(operations);
+
+        // Do cleanup last
+        if (config.actions.includes('post-cleanup')) {
+            doHeader('post-cleanup');
+            await postCleanup();
+        }
 
     } catch (error) {
         logger.fail(`An error occurred: ${error.message}`).stop();

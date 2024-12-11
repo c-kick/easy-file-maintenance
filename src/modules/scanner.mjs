@@ -38,7 +38,6 @@ async function scanDirectory(dirPath, config, depth = 0) {
         path.join(config.scanPath, 'duplicates')
     ].map(p => path.resolve(p));
 
-    logger.indent();
     logger.text(`Scanning directory: ${dirPath} (${items.length} items)`);
 
     for (const item of items) {
@@ -85,7 +84,6 @@ async function scanDirectory(dirPath, config, depth = 0) {
             isDirectory: stats.isDirectory(),
             modifiedTime: stats.mtime,
             createdTime: stats.ctime,
-            isEmpty: stats.isDirectory() ? (await readdir(itemPath)).length === 0 : stats.size === 0,
             isAlone: false, // Initially set to false
             delete: isForceMovedFile,
             ignore: isForcedIgnored || isIgnoredDir || (isIgnoredFile && !isForceMovedFile),
@@ -115,7 +113,7 @@ async function scanDirectory(dirPath, config, depth = 0) {
 
             // Update directory attributes with subdirectory data
             fileCount += subScan.fileCount;
-            directorySize += subScan.directorySize;
+            directorySize += subScan.directorySize ?? 0;
             dirCount += subScan.dirCount;
         }
     }
@@ -131,7 +129,8 @@ async function scanDirectory(dirPath, config, depth = 0) {
         fileCount:     fileCount + intrinsicFileCount, // Include own files and subdirectory files
         intrinsicDirectorySize,
         directorySize: directorySize + intrinsicDirectorySize, // Include own size and subdirectory size
-        isEmpty:       items.length === 0,
+        size:          directorySize + intrinsicDirectorySize, // Include own size and subdirectory size
+        isEmpty:       (directorySize + fileCount) === 0,
         stats:         await stat(dirPath)
     };
 

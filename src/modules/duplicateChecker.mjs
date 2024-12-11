@@ -59,7 +59,6 @@ async function determineOriginal(files) {
     }, files[0]);
 }
 
-
 function partitionFilesByDirectory(files) {
     logger.text(`Arranging files into directory-sets...`);
     const partitions = {};
@@ -72,7 +71,6 @@ function partitionFilesByDirectory(files) {
     });
     return partitions;
 }
-
 
 async function duplicatesGrouper(files, extensions) {
     const filesetMap = [];
@@ -137,11 +135,6 @@ async function duplicatesGrouper(files, extensions) {
         }
     }
 
-    /*
-    console.log(filesetMap);
-    console.log(filesetSizeGroups);
-    //*/
-
     // Process file groups of equal size, but ignore those who are already in a fileset.
     const fileSizeGroups = {};
     // Group files by size
@@ -167,218 +160,7 @@ async function duplicatesGrouper(files, extensions) {
             }
         }
     }
-
-
-    //console.log(sizeGroups);
-    //console.log(fileSizeGroups);
-    //console.log(duplicates);
-    /*
-    // Step 5: Cross-reference filesets with duplicates
-    for (const groupFilesets of Object.values(filesets)) {
-        // Collect all fileset-susceptible files in the group
-        const susceptibleFiles = groupFilesets.flatMap(({ group }) =>
-          group.filter(file => extensions.includes(file.name.split('.').pop().toLowerCase()))
-        );
-
-        // Find the original file among susceptible files
-        const originalFile = determineOriginal(susceptibleFiles);
-
-        // Determine which fileset contains the original file
-        const originalFileset = groupFilesets.find(({ group }) =>
-          group.includes(originalFile)
-        );
-
-        // Mark all other filesets in the group as duplicates
-        for (const { group } of groupFilesets) {
-            if (group === originalFileset.group) continue; // Skip the original fileset
-
-            for (let i = 0; i < group.length; i++) {
-                group[i].suspected_duplicate_of = originalFileset.group[i]?.path; // Map duplicates to originals by index
-            }
-        }
-    }
-
-
-    //console.log(JSON.stringify(filesets, null, 4));
-    // Step 6: Build the final output
-    return {
-        files: duplicates,
-        filesets
-    };
-    //*/
     return duplicates;
-}
-
-
-/**
- * Groups files by their prefix (base name) based on a set of allowed extensions.
- *
- * @param {object[]} files - Array of file objects to be grouped. Each file object should include:
- *   - {string} path - The full file path.
- * @param {string[]} extensions - Array of file extensions that are likely accompanied by metadata-files (e.g., ['jpg', 'jpeg', 'mp4', 'avi']).
- * @param {number} chunkSize - Number of bytes to hash for grouping (defaults to CHUNK_SIZE).
- * @returns {Promise<object[{}]>} - Object with `files` and `sets` groups. Each group contains an array of file objects sharing the same base name.
- */
-async function smartGroupFiles(files, extensions, chunkSize) {
-    const returnData = {};
-    const possibleSetPattern = new RegExp(`(.*)\\.(${extensions.join('|')})$`, 'i');
-    const processedItems = new Set();
-    const itemGroups = {files: [], sets: []};
-
-    // Step 1: Group files by directory and basename, and remove from `files` if they are part of a set
-    const partitions = partitionFilesByDirectory(files);
-    const processedFiles = new Set(); // Track files that are part of a set
-
-    for (const [dir, dirFiles] of Object.entries(partitions)) {
-        const processedFiles = new Set(); // Track files already added to sets
-
-        // Step 1: Find and group files into sets
-        dirFiles.forEach(file => {
-            if (processedFiles.has(file)) return; // Skip already processed files
-
-            const possibleSet = file.name.match(possibleSetPattern);
-            if (possibleSet) {
-                const setFiles = dirFiles.filter(
-                  related =>
-                    new RegExp(`^${file.baseName}(?![a-zA-Z0-9])`).test(related.name)
-                );
-
-                if (setFiles.length > 1) {
-                    setFiles.forEach(f => processedFiles.add(f)); // Mark all set files as processed
-                    itemGroups.sets.push(setFiles); // Add the set to itemGroups.sets
-                }
-            }
-        });
-
-        // Step 2: Add remaining ungrouped files to itemGroups.files
-        dirFiles.forEach(file => {
-            if (!processedFiles.has(file)) {
-                file.partOfSet = false; // Mark as not part of a set
-                itemGroups.files.push(file); // Add to itemGroups.files
-            }
-        });
-    }
-
-    console.log(itemGroups.files);
-    console.log(itemGroups.sets);
-
-    // Step 3: Group by total set size
-    const setGroups = {};
-    for (const groupType in itemGroups) {
-        setGroups[groupType] = {};
-        itemGroups[groupType].forEach(set => {
-            const setSize = set.size ?? set.reduce((total, file) => total + file.size, 0);
-            if (!setGroups[groupType][setSize]) {
-                setGroups[groupType][setSize] = [set];
-            } else {
-                setGroups[groupType][setSize].push(set);
-            }
-        })
-    }
-
-    console.log(setGroups);
-    // Step 4: Remove sets with only one item (i.e. no duplicates in set) and files which are part of a set
-    const duplicates = {
-        sets:  Object.fromEntries(
-          Object.entries(setGroups.sets).filter(([key, value]) => value.length > 1)
-        ),
-        files: Object.fromEntries(
-          Object.entries(setGroups.files).filter(([key, value]) =>
-            value.length > 1 && value.some(file => !file.partOfSet) // Ensure some files are not part of a set
-          ).map(([key, value]) => [key, value.filter(file => !file.partOfSet)]) // Filter out files with partOfSet true
-        )
-    };
-
-    //console.log(duplicates);
-
-    for (const [size, files] of Object.entries(duplicates.files)) {
-        console.group(`${size} bytes`);
-        files.forEach(file => {
-            if (file.partOfSet) {
-                console.log(`\x1b[33m${file.name}\x1b[0m`);
-            } else {
-                console.log(file.name);
-            }
-        })
-        console.groupEnd();
-    }
-    for (const [size, sets] of Object.entries(duplicates.sets)) {
-        console.group(`${size} bytes`);
-        sets.forEach(set => {
-            console.group("Set");
-            set.forEach(s => {
-                console.log(s.name);
-            });
-            console.groupEnd();
-        })
-        console.groupEnd();
-    }
-
-    return duplicates;
-
-    //const duplicates = [];
-    const groupedBySize = new Map();
-
-    setGroups.forEach(({ group, setSize }) => {
-        if (!groupedBySize.has(setSize)) {
-            groupedBySize.set(setSize, []);
-        }
-        groupedBySize.get(setSize).push(group);
-    });
-
-
-    groupedBySize.forEach((groups, sizeKey) => {
-        if (groups.length > 1) {
-
-            const aSet = groups.every(group => group.length > 1);
-
-            if (aSet) {
-                duplicates.push({
-                    type: 'set',
-                    size: sizeKey,
-                    sets: groups
-                });
-            } else {
-                // Handle individual file duplicates across groups
-                groups.forEach(group => {
-                    group.forEach(file => {
-                        if (!processedItems.has(file.path)) {
-                            const matchingFileGroups = groups.filter(g =>
-                              g.some(f => f.name === file.name && f.size === file.size)
-                            );
-                            if (matchingFileGroups.length > 1) {
-                                duplicates.push({
-                                    type: 'file',
-                                    size: file.size,
-                                    files: matchingFileGroups.flat()
-                                });
-                            }
-                            processedItems.add(file.path);
-                        }
-                    });
-                });
-            }
-        }
-    });
-
-    logger.text(`Found ${itemGroups.length} potential duplicate files / filesets. Now hashing...`);
-
-
-    // Wrap each group hashing task in a function
-    const tasks = itemGroups.map(group => async () => {
-        const hashedGroup = await Promise.all(group.map(async file => {
-            logger.text(`Hashing... ${file.path}`);
-            return { ...file, hash: await hashFileChunk(file.path, chunkSize) };
-        }));
-
-        const groupHash = hashString(hashedGroup.map(file => file.hash).join());
-        (returnData[groupHash] = returnData[groupHash] ?? []).push(hashedGroup);
-    });
-
-    // Execute tasks with concurrency control
-    await withConcurrency(FILE_LIMIT, tasks);
-
-    return Object.entries(returnData).filter(([key, value]) => value.length > 1);
 }
 
 /**
@@ -394,7 +176,6 @@ async function smartGroupFiles(files, extensions, chunkSize) {
  * @returns {Promise<Array>} - Array of duplicate groups. Each group includes the original file and its duplicates.
  */
 async function getDuplicateItems(filesObject, binPath, dupeSetExts = ['jpg', 'jpeg', 'mp4', 'avi'], chunkSize = CHUNK_SIZE) {
-    const duplicates = [];
     const newDuplicates = {};
 
     logger.text(`Filtering files first...`);
@@ -429,7 +210,7 @@ async function getDuplicateItems(filesObject, binPath, dupeSetExts = ['jpg', 'jp
                         const confirmedDupe = (file.hash === origHash);
                         if (confirmedDupe) {
                             delete file.suspected_duplicate_of;
-                            (newDuplicates[originalFile] = newDuplicates[originalFile] ?? []).push({...file, duplicate_of: originalFile});
+                            (newDuplicates[originalFile] = newDuplicates[originalFile] ?? []).push({...file, duplicate_of: originalFile, move_to: rebasePath(binPath, file.path)});
                         } else {
                             //not a duplicate based on md5 hash
                             //console.log(`${file.path} is not a duplicate of ${originalFile}, based on MD5 hash:`);
@@ -465,7 +246,7 @@ async function getDuplicateItems(filesObject, binPath, dupeSetExts = ['jpg', 'jp
                             hashedGroup.forEach(file => {
                                 const originalFile = hashMap[file.hash] || null; // Use null if no match is found
                                 (newDuplicates[originalFile] = newDuplicates[originalFile] ?? []).push(
-                                  {...file, isInFileset: true, duplicate_of: originalFile}
+                                  {...file, isInFileset: true, duplicate_of: originalFile, move_to: rebasePath(binPath, file.path) }
                                 );
                             });
                         } else {
@@ -484,19 +265,7 @@ async function getDuplicateItems(filesObject, binPath, dupeSetExts = ['jpg', 'jp
     }
 
     //newDuplicates now contains all duplicates that need handling, whether they are part of a fileset or not.
-    logger.succeed(`Found a total of ${Object.values(newDuplicates).reduce((acc, arr) => acc + arr.length, 0)} duplicates for ${Object.entries(newDuplicates).length} items after hashing.`);
-
-    //console.log(newDuplicates);
-    for (const duplicate in newDuplicates) {
-        const dupes = newDuplicates[duplicate];
-        console.group(`${duplicate} has ${dupes.length} duplicates:`)
-        dupes.forEach(dupe => {
-            console.log(`${dupe.path}${dupe.isInFileset ? ' (part of a duplicate fileset)' : ''}`);
-        })
-        console.groupEnd();
-    }
-
-    //return duplicates;
+    return newDuplicates;
 
 }
 

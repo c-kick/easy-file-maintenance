@@ -1,5 +1,5 @@
 import logger from '../utils/logger.mjs';
-import {doHeader, userConfirm} from "./helpers.mjs";
+import {answerLoop, doHeader, userConfirm} from "./helpers.mjs";
 import fs from 'fs/promises';
 import fsExtra from 'fs-extra';
 import path from 'path';
@@ -16,14 +16,36 @@ export async function postCleanup() {
     logger.succeed(`Directory rescanned.`);
     logger.start('Checking for items to cleanup...');
     const cleanupItems = await getCleanUpItems(scan.results, config.scanPath, config.recycleBinPath);
-    logger.succeed(`Found ${cleanupItems.length} items requiring post-clean up.`);
+    logger.succeed(`Found ${cleanupItems.length} items requiring clean up.`);
     if (cleanupItems.length > 0) {
         logger.start('Cleaning up...');
-        for (const item of cleanupItems) {
-            const result = await doOperation(item);
-            if (result) sizeAffected += item.size ?? 0;
-        }
-        logger.succeed(`Cleanup done. ${sizeAffected} bytes saved.`);
+        logger.indent().warn('Note: empty directories are considered empty, even if they still contain files/dirs that you chose to ignore!')
+        logger.indent().warn(`You are ignoring files:`)
+        logger.indent().warn(config.ignoreFiles);
+        logger.indent().warn(`And directories:`)
+        logger.indent().warn(config.ignoreDirectories);
+
+        await answerLoop(`Do you want to continue?`, ['y', 'n', 's'],
+          {
+              'y': async () => {
+                  for (const item of cleanupItems) {
+                      const result = await doOperation(item);
+                      if (result) sizeAffected += item.size ?? 0;
+                  }
+                  logger.succeed(`Cleanup done. ${sizeAffected} bytes saved.`);
+                  return true;
+              },
+              'n': () => {
+                  logger.fail(`Cleanup skipped.`);
+                  return true;
+              },
+              's': () => {
+                  console.log(cleanupItems);
+                  return false;
+              }
+          }
+        )
+
     }
     return {success, sizeAffected};
 }
@@ -84,6 +106,7 @@ async function executeOperations(operations) {
     for (const operation in operations) {
         if (operations.hasOwnProperty(operation) && operations[operation].length) {
 
+            //todo: integrate answerLoop here
             doHeader(operation);
             let proceed = false;
             if (yesAllActions) {

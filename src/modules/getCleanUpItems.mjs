@@ -9,6 +9,7 @@ import {rebasePath} from "../utils/helpers.mjs";
  */
 async function getCleanUpItems(filesObject, scanDir, binPath) {
     // Combine files and directories into a single array
+    //todo: sort by path, so root gets deleted last!
     const allEntries = [
         ...Object.values(filesObject.files),
         ...Object.values(filesObject.directories)
@@ -17,7 +18,7 @@ async function getCleanUpItems(filesObject, scanDir, binPath) {
     .filter(item => (item.isEmpty || item.delete))
     .map(item => {
         return {
-            ...item,
+            path: item.path,
             move_to: rebasePath(binPath, item.path),
             reason: `${item.isEmpty ? 'is empty' : item.delete ? 'should always be deleted' : 'unknown'}`
         };

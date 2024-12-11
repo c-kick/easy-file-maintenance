@@ -12,7 +12,30 @@ export function normalizePath(thisPath) {
 
 export function userConfirm(question, validAnswers = ['y', 'a', 'n', 'c', 's']) {
   logger.stopAndPersist({ symbol: '\x1b[35m?\x1b[0m', text: `\x1b[35m${question.toString()}\x1b[0m` });
-  const answerGuide = validAnswers.length === 4 ?'(y)es, yes to (a)ll, (n)o, or (c)ancel' : '(y)es, yes to (a)ll, (n)o, (c)ancel, or (s)how affected items first';
+  const answerGuide = [];
+
+  validAnswers.forEach((answer) => {
+    switch (answer) {
+      case 'y':
+        answerGuide.push('(y)es');
+        break;
+      case 'a':
+        answerGuide.push('yes to (a)ll');
+        break;
+      case 'n':
+        answerGuide.push('(n)o');
+        break;
+      case 'c':
+        answerGuide.push('(c)ancel');
+        break;
+      case 's':
+        answerGuide.push('(s)how affected items first');
+        break;
+      default:
+        break;
+    }
+  })
+
   return new Promise((resolve) => {
     const rl = readline.createInterface({
       input: process.stdin,
@@ -20,7 +43,7 @@ export function userConfirm(question, validAnswers = ['y', 'a', 'n', 'c', 's']) 
     });
 
     const promptUser = () => {
-      rl.question(`${(logger.hasInstance() ? '' : `${question.toString()}\n`)}${answerGuide}: `, (answer) => {
+      rl.question(`${(logger.hasInstance() ? '' : `${question.toString()}\n`)}${answerGuide.join(', ').trim()}: `, (answer) => {
         const lowerCaseAnswer = answer.toLowerCase();
 
         if (validAnswers.includes(lowerCaseAnswer)) {
@@ -35,6 +58,17 @@ export function userConfirm(question, validAnswers = ['y', 'a', 'n', 'c', 's']) 
 
     promptUser();
   });
+}
+
+export async function answerLoop(question, validAnswers = ['y', 'a', 'n', 'c', 's'], actions) {
+  let validAnswer = false;
+  while (!validAnswer) {
+    const userAnswer = await userConfirm(question, validAnswers);
+
+    if (actions[userAnswer]) {
+      validAnswer = actions[userAnswer]();
+    }
+  }
 }
 
 /**

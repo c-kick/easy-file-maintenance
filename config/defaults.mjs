@@ -55,7 +55,7 @@ export default {
       "orphans",
       "permissions",
       "ownership",
-      "cleanup",
+      //"cleanup",
       "post-cleanup"
     ],
     type:    "object",
