@@ -43,13 +43,11 @@ async function determineOriginal(files) {
     return files.reduce((oldest, file) => {
         const fileTimestamp = Math.min(
           file.stats.ctimeMs,
-          file.stats.mtimeMs,
           file.stats.birthtimeMs
         );
 
         const oldestTimestamp = Math.min(
           oldest.stats.ctimeMs,
-          oldest.stats.mtimeMs,
           oldest.stats.birthtimeMs
         );
 
@@ -106,7 +104,7 @@ async function duplicatesGrouper(files, extensions) {
                         dirFilesByBase[file.baseName].push(otherFile);
                     }
                 }
-
+                if (!dirFilesByBase[file.baseName].length) continue;
                 // Include the triggering file itself
                 file.isSetMaster = true;
                 dirFilesByBase[file.baseName].push(file);
@@ -130,8 +128,12 @@ async function duplicatesGrouper(files, extensions) {
         if (fileSets.length > 1) {
             const masterFiles = fileSets.flat().filter(file => file.isSetMaster);
             const original = await determineOriginal(masterFiles);
+            const originalSet = fileSets.filter(fileSet => fileSet.includes(original));
             const duplicateSets = fileSets.filter(fileSet => !fileSet.includes(original));
-            duplicates.sets.push(...duplicateSets);
+            duplicates.sets.push({
+                original: [...originalSet[0]],
+                duplicates: duplicateSets
+            });
         }
     }
 
@@ -158,7 +160,8 @@ async function duplicatesGrouper(files, extensions) {
 
             for (const file of nonFilesetFiles) {
                 if (file !== original) {
-                    file.duplicate_of = original.path;
+                    file.suspected_duplicate_of = original.path;
+                    duplicates.files.push(file);
                 }
                 (fileSizeGroups[size] = fileSizeGroups[size] ?? []).push(file);
             }
@@ -167,8 +170,8 @@ async function duplicatesGrouper(files, extensions) {
 
 
     //console.log(sizeGroups);
-    console.log(fileSizeGroups);
-    console.log(duplicates);
+    //console.log(fileSizeGroups);
+    //console.log(duplicates);
     /*
     // Step 5: Cross-reference filesets with duplicates
     for (const groupFilesets of Object.values(filesets)) {
@@ -190,7 +193,7 @@ async function duplicatesGrouper(files, extensions) {
             if (group === originalFileset.group) continue; // Skip the original fileset
 
             for (let i = 0; i < group.length; i++) {
-                group[i].duplicate_of = originalFileset.group[i]?.path; // Map duplicates to originals by index
+                group[i].suspected_duplicate_of = originalFileset.group[i]?.path; // Map duplicates to originals by index
             }
         }
     }
@@ -203,6 +206,7 @@ async function duplicatesGrouper(files, extensions) {
         filesets
     };
     //*/
+    return duplicates;
 }
 
 
@@ -391,6 +395,7 @@ async function smartGroupFiles(files, extensions, chunkSize) {
  */
 async function getDuplicateItems(filesObject, binPath, dupeSetExts = ['jpg', 'jpeg', 'mp4', 'avi'], chunkSize = CHUNK_SIZE) {
     const duplicates = [];
+    const newDuplicates = {};
 
     logger.text(`Filtering files first...`);
     // Pre-filter files object to only retain files that actually have a size
@@ -400,57 +405,99 @@ async function getDuplicateItems(filesObject, binPath, dupeSetExts = ['jpg', 'jp
     // Smart group these files to create single- or multi filesets, and compute hashes for all these
     const smartSizeGroups = await duplicatesGrouper(files, dupeSetExts);
 
+    logger.text(`Found ${Object.entries(smartSizeGroups.sets).length} suspected fileset duplicates, and ${Object.entries(smartSizeGroups.files).length} suspected individual file duplicates`);
 
-    return duplicates;
+    for (const dupeType in smartSizeGroups) {
+        const items = smartSizeGroups[dupeType];
+        switch (dupeType) {
 
-    logger.text(`Found ${Object.entries(smartSizeGroups.sets).length} suspected fileset duplicates, and ${Object.entries(smartSizeGroups.files).length} suspected file duplicates`);
-
-
-
-
-
-    for (const [hash, itemSet] of smartSizeGroups) {
-        let single = itemSet.every(items => items.length === 1);
-        const fileDupes = itemSet.flat();
-        const originalFile = await determineOriginal(fileDupes);
-
-        let originalSet;
-        let duplicatesOnly;
-
-        if (single) {
-
-            //single file dupes
-            duplicatesOnly = fileDupes.filter(file => file !== originalFile).map(item => {
-                return {
-                    ...item,
-                    original: originalFile.path,
-                    move_to: rebasePath(binPath, item.path),
+            case 'files':
+                //hash files first
+                const hashedItems = await Promise.all(items.map(async file => {
+                    const hash = await hashFileChunk(file.path, chunkSize);
+                    logger.start(`Hashing... ${file.path}`);
+                    return { ...file, hash };
+                }));
+                //process files
+                for (const file of hashedItems) {
+                    const originalFile = file.suspected_duplicate_of;
+                    if (!originalFile) {
+                        console.error(`No duplicate reference found for "${file.path}"`);
+                    } else {
+                        const origHash = await hashFileChunk(originalFile, chunkSize);
+                        logger.start(`Hashing... ${file.path}`);
+                        const confirmedDupe = (file.hash === origHash);
+                        if (confirmedDupe) {
+                            delete file.suspected_duplicate_of;
+                            (newDuplicates[originalFile] = newDuplicates[originalFile] ?? []).push({...file, duplicate_of: originalFile});
+                        } else {
+                            //not a duplicate based on md5 hash
+                            //console.log(`${file.path} is not a duplicate of ${originalFile}, based on MD5 hash:`);
+                            //console.log(`${file.hash} != ${origHash}`);
+                        }
+                    }
                 }
-            });
+                break;
 
-        } else {
+            case 'sets':
+                for (const set of items) {
 
-            //fileset dupes
-            //find the original file, and select the 'original set' based on in which set we find it
-            originalSet = itemSet.find(subArray => subArray.includes(originalFile));
-            duplicatesOnly = itemSet.filter(set => set !== originalSet).map(item => item.map(item => {
-                return {
-                    ...item,
-                    original: originalSet.filter(origItem => origItem.hash === item.hash)[0].path,
-                    move_to: rebasePath(binPath, item.path),
+                    //hash files in the original set
+                    const hashedSet = await Promise.all(set.original.map(async file => {
+                        return { ...file, hash: await hashFileChunk(file.path, chunkSize) };
+                    }));
+                    //combine hashes into a single original group hash
+                    const originalSetHash = hashString(hashedSet.map(file => file.hash).join());
+                    // Create a lookup map for hashedSet by hash
+                    const hashMap = Object.fromEntries(hashedSet.map(file => [file.hash, file.path]));
+
+                    for (const duplicateSet of set.duplicates) {
+                        //hash files in subset
+                        const hashedGroup = await Promise.all(duplicateSet.map(async file => {
+                            const hash = await hashFileChunk(file.path, chunkSize);
+                            logger.start(`Hashing... ${file.path}`);
+                            return { ...file, hash  };
+                        }));
+                        //combine hashes into a single group hash
+                        const groupHash = hashString(hashedGroup.map(file => file.hash).join());
+                        const confirmedDupe = (originalSetHash === groupHash);
+                        if (confirmedDupe) {
+                            hashedGroup.forEach(file => {
+                                const originalFile = hashMap[file.hash] || null; // Use null if no match is found
+                                (newDuplicates[originalFile] = newDuplicates[originalFile] ?? []).push(
+                                  {...file, isInFileset: true, duplicate_of: originalFile}
+                                );
+                            });
+                        } else {
+                            //not a duplicate based on md5 hash
+                            //console.log(`Fileset ${hashedGroup.map(item => item.path).join(', ')} is not a duplicate of fileset ${hashedSet.map(item => item.path).join(', ')} , based on MD5 hash:`);
+                            //console.log(`${groupHash} != ${originalSetHash}`);
+                        }
+                    }
+
                 }
-            }));
+                break;
 
+            default:
+                console.error(`"${dupeType}" not defined`);
         }
-
-        duplicates.push({
-            type: single ? 'file' : 'set',
-            original: single ? originalFile : originalSet,
-            duplicates: duplicatesOnly
-        });
     }
 
-    return duplicates;
+    //newDuplicates now contains all duplicates that need handling, whether they are part of a fileset or not.
+    logger.succeed(`Found a total of ${Object.values(newDuplicates).reduce((acc, arr) => acc + arr.length, 0)} duplicates for ${Object.entries(newDuplicates).length} items after hashing.`);
+
+    //console.log(newDuplicates);
+    for (const duplicate in newDuplicates) {
+        const dupes = newDuplicates[duplicate];
+        console.group(`${duplicate} has ${dupes.length} duplicates:`)
+        dupes.forEach(dupe => {
+            console.log(`${dupe.path}${dupe.isInFileset ? ' (part of a duplicate fileset)' : ''}`);
+        })
+        console.groupEnd();
+    }
+
+    //return duplicates;
+
 }
 
 export default getDuplicateItems;
