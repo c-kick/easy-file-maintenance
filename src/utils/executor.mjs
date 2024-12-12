@@ -7,12 +7,12 @@ import scanDirectory from "../modules/scanner.mjs";
 import configLoader from "../modules/configLoader.mjs";
 import getCleanUpItems from "../modules/getCleanUpItems.mjs";
 
-export async function postCleanup() {
+export async function postCleanup(useScan) {
     let success = true;
     let sizeAffected = 0;
     const config = configLoader;
     logger.start('Rescanning directory...');
-    let scan = await scanDirectory(config.scanPath, config, 0);
+    let scan = useScan ?? await scanDirectory(config.scanPath, config, 0);
     logger.succeed(`Directory rescanned.`);
     logger.start('Checking for items to cleanup...');
     const cleanupItems = await getCleanUpItems(scan.results, config.scanPath, config.recycleBinPath);
@@ -36,7 +36,7 @@ export async function postCleanup() {
                   return true;
               },
               'n': () => {
-                  logger.fail(`Cleanup skipped.`);
+                  logger.warn(`Cleanup skipped.`);
                   return true;
               },
               's': () => {
@@ -121,7 +121,7 @@ async function executeOperations(operations) {
                       },
                       'n': async () => {
                           logger.warn(`Skipping ${operation} actions`);
-                          return false;
+                          return true;
                       },
                       'c': async () => {
                           logger.fail(`Cancelled all remaining actions`);

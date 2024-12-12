@@ -4,6 +4,8 @@ import logger from '../utils/logger.mjs';
 import fs from "fs/promises";
 import crypto from "crypto";
 
+const CHUNK_SIZE = 131072; // Default chunk size for partial hashing
+
 // Normalizes a given path, removing any trailing slashes and handling relative paths
 export function normalizePath(thisPath) {
   // Convert the path to an absolute path and normalize it

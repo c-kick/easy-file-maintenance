@@ -80,6 +80,7 @@ export default {
     default: [
       "@eaDir",  // Example: Exact match
       "@*"       // Example: Wildcard match (e.g., "@eaDir", "@something")
+      //...Array.from({ length: 2024 - 2000 + 1 }, (_, i) => (2000 + i).toString()) //example that ignores all directories named /2000 up to /2024.
     ],
     type:    "object",
   },

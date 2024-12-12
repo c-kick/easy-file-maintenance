@@ -5,7 +5,8 @@ import exifParser from 'exif-parser';
 import pLimit from "p-limit";
 import {withConcurrency} from "../utils/helpers.mjs";
 
-const FILE_LIMIT = pLimit(5); // Limit concurrency to 10
+const FILE_LIMIT = pLimit(2); // Limit concurrency
+const SUPPORTED_EXIF_EXTENSIONS = new Set(['jpg', 'jpeg', 'tiff', 'heic', 'png']);
 
 /**
  * Append a string to the filename while preserving its extension.
@@ -27,14 +28,25 @@ export function appendToFilename(fileName, appendString) {
  * @returns {Object} - The oldest valid date or null if none are valid, and the source of the date
  */
 export async function extractOldestDate(file, dateThreshold, evalFullPath = true) {
+  // Step 0: Skip files without supported extensions for EXIF
+  if (!SUPPORTED_EXIF_EXTENSIONS.has(file.extension.toLowerCase())) {
+    return { date: null, source: null, dates: [] }; // No EXIF support
+  }
+
   const dates = [];
+  let fh;
 
   // Step 1: Check EXIF data
   try {
-    const buffer = await fs.readFile(file.path);
+    /*const buffer = await fs.readFile(file.path);
+    const parser = exifParser.create(buffer);
+    const exifData = parser.parse();*/
+    fh = await fs.open(file.path, 'r');
+    const buffer = Buffer.alloc(64 * 1024); // 64KB buffer
+    await fh.read(buffer, 0, buffer.length, 0);
     const parser = exifParser.create(buffer);
     const exifData = parser.parse();
-    if (exifData.tags.DateTimeOriginal) {
+    if (exifData && exifData.tags.DateTimeOriginal) {
       dates.push({
         date: new Date(exifData.tags.DateTimeOriginal * 1000), // Convert to milliseconds
         source: 'exif'
@@ -42,6 +54,10 @@ export async function extractOldestDate(file, dateThreshold, evalFullPath = true
     }
   } catch {
     // Ignore errors (e.g., non-image files or missing EXIF data)
+  } finally {
+    if (fh) {
+      await fh.close();
+    }
   }
 
   // Step 2: Check the filename and path for dates
@@ -131,8 +147,63 @@ async function getReorganizeItems(filesObject, targetStructure = '/{year}/{month
     dateThreshold = new Date('1995-01-01');
   }
 
-  const files = Object.values(filesObject);
   let progress = 0;
+  const files = filesObject;
+  const promises = [];
+
+  filesObject.forEach((file, filepath) => {
+    // Push the async operation to the promises array
+    promises.push(
+      (async () => {
+        progress += 1; // Increment progress after processing
+        logger.text(`Scanning for dates in files... ${progress}/${files.size}`);
+        // Simulate async operation, e.g., reading file contents
+        const oldestDate = await extractOldestDate(file, dateThreshold);
+
+        if (!oldestDate.date || file.isDirectory || file.delete) {
+          return null; // Skip files without a valid date, directories, or files to be deleted
+        }
+
+        const year = oldestDate.date.getUTCFullYear();
+        const month = String(oldestDate.date.getUTCMonth() + 1).padStart(2, '0'); // Months are zero-indexed
+        const day = String(oldestDate.date.getUTCDate()).padStart(2, '0');
+
+        const targetDir = path.join(relPath, targetStructure
+        .replace('{year}', year)
+        .replace('{month}', month)
+        .replace('{day}', day));
+
+        const pathRef = path.basename(path.normalize(file.dir).replace(/\/$/, ''));
+        const targetName = file.name.includes(pathRef)
+          ? file.name
+          : appendToFilename(file.name, ` - ${pathRef}`);
+
+        if (targetDir.replace(/\/$/, '') !== file.dir.replace(/\/$/, '')) {
+          const targetPath = path.join(relPath ?? '', path.join(targetDir, targetName));
+          return {move_to: targetPath, date: oldestDate};
+        }
+
+        return null; // Skip if already in the correct directory
+
+      })()
+    );
+  });
+
+  // Wait for all async operations to complete
+  const tasks2 = await Promise.all(promises);
+
+  console.log(tasks2);
+
+
+
+
+
+
+
+
+
+
+  progress = 0;
 
   // Wrap each file task in a function
   const tasks = files.map(file => async () => {
@@ -144,9 +215,10 @@ async function getReorganizeItems(filesObject, targetStructure = '/{year}/{month
       return null; // Skip files without a valid date, directories, or files to be deleted
     }
 
-    const year = oldestDate.date.getFullYear();
-    const month = String(oldestDate.date.getMonth() + 1).padStart(2, '0');
-    const day = String(oldestDate.date.getDate()).padStart(2, '0');
+    const year = oldestDate.date.getUTCFullYear();
+    const month = String(oldestDate.date.getUTCMonth() + 1).padStart(2, '0'); // Months are zero-indexed
+    const day = String(oldestDate.date.getUTCDate()).padStart(2, '0');
+
     const targetDir = targetStructure
     .replace('{year}', year)
     .replace('{month}', month)

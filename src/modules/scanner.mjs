@@ -1,150 +1,95 @@
 import logger from '../utils/logger.mjs';
 import fs from 'fs';
 import path from 'path';
-import {promisify} from 'util';
+import { promisify } from 'util';
 
 const readdir = promisify(fs.readdir);
 const stat = promisify(fs.stat);
 
-/**
- * Matches a string against a pattern with basic wildcard (*) support.
- * @param {string} str - The string to match.
- * @param {string} pattern - The pattern to match against.
- * @returns {boolean} - True if the string matches the pattern.
- */
 function matchPattern(str, pattern) {
     const regex = new RegExp(
-        '^' + pattern.replace(/[-/\\^$+?.()|[\]{}]/g, '\$&').replace(/\*/g, '.*') + '$'
+      '^' + pattern.replace(/[-/\\^$+?.()|[\]{}]/g, '\\$&').replace(/\*/g, '.*') + '$'
     );
     return regex.test(str);
 }
 
-/**
- * Recursively scans a directory and collects details about files and directories.
- * @param {string} dirPath - Path to the directory to scan.
- * @param {object} config - Configuration object containing exclusion rules.
- * @param {number} depth - Current depth in the directory tree.
- * @returns {Promise<{}>} - List of file and directory details.
- */
-async function scanDirectory(dirPath, config, depth = 0) {
-    const results = { directories: {}, files: {} };
-    const items = await readdir(dirPath);
-    let intrinsicFileCount = 0, fileCount = 0, dirCount = 1;
-    let intrinsicDirectorySize = 0, directorySize = 0;
+function shouldIgnore(itemName, resolvedItemPath, stats, config) {
+    const forcedIgnorePaths = [config.recycleBinPath].map(p => path.resolve(p));
+    const isForcedIgnored = forcedIgnorePaths.some(ignorePath =>
+      resolvedItemPath.startsWith(ignorePath)
+    );
 
-    // Paths to always ignore
-    const forcedIgnorePaths = [
-        config.recycleBinPath,
-        path.join(config.scanPath, 'duplicates')
-    ].map(p => path.resolve(p));
+    if (isForcedIgnored) return true;
 
-    logger.text(`Scanning directory: ${dirPath} (${items.length} items)`);
-
-    for (const item of items) {
-        const itemPath = path.join(dirPath, item);
-        const itemName = path.basename(itemPath);
-        const resolvedItemPath = path.resolve(itemPath);
-        const stats = await stat(itemPath);
-
-        // Check for forced ignores
-        const isForcedIgnored = forcedIgnorePaths.some(ignorePath =>
-          resolvedItemPath.startsWith(ignorePath)
-        );
-
-        // Check for forced deletes (moves)
-        const isForceMovedFile = stats.isFile() &&
-          Array.isArray(config.removeFiles) &&
-          config.removeFiles.some(pattern => matchPattern(itemName, pattern));
-
-        // Check for ignored directories and files
-        const isIgnoredDir = stats.isDirectory() &&
-          !isForcedIgnored &&
-          Array.isArray(config.ignoreDirectories) &&
-          config.ignoreDirectories.some(pattern => matchPattern(item, pattern));
-
-        const isIgnoredFile = stats.isFile() &&
-          !isForcedIgnored &&
-          Array.isArray(config.ignoreFiles) &&
-          config.ignoreFiles.some(pattern => matchPattern(item, pattern));
-
-        if (isForcedIgnored || isIgnoredDir || (isIgnoredFile && !isForceMovedFile)) {
-            logger.text(`Ignoring: ${itemPath}`);
-            continue;
-        }
-
-        const entry = {
-            depth,
-            path: itemPath,
-            name: itemName,
-            baseName: path.basename(itemName, path.extname(itemPath)),
-            extension: itemName.split('.').pop().toLowerCase(),
-            dir: path.dirname(itemPath),
-            size: stats.size,
-            isFile: stats.isFile(),
-            isDirectory: stats.isDirectory(),
-            modifiedTime: stats.mtime,
-            createdTime: stats.ctime,
-            isAlone: false, // Initially set to false
-            delete: isForceMovedFile,
-            ignore: isForcedIgnored || isIgnoredDir || (isIgnoredFile && !isForceMovedFile),
-            stats
-        };
-
-        if (stats.isFile()) {
-            results.files[itemPath] = entry;
-            intrinsicFileCount++;
-            intrinsicDirectorySize += stats.size;
-        }
-        if (stats.isDirectory()) {
-            results.directories[itemPath] = entry;
-            dirCount++;
-        }
-
-        // Update spinner progress
-        logger.text(`Scanning: ${itemPath}`);
-
-        // Recursively scan directories
-        if (entry.isDirectory) {
-            const subScan = await scanDirectory(itemPath, config, depth + 1);
-
-            // Merge subScan results into current results
-            results.files = { ...results.files, ...subScan.results.files };
-            results.directories = { ...results.directories, ...subScan.results.directories };
-
-            // Update directory attributes with subdirectory data
-            fileCount += subScan.fileCount;
-            directorySize += subScan.directorySize ?? 0;
-            dirCount += subScan.dirCount;
-        }
+    if (stats.isDirectory() && config.ignoreDirectories.some(pattern => matchPattern(itemName, pattern))) {
+        return true;
     }
 
-    // Update the current directory entry with the aggregated data
-    results.directories[dirPath] = {
+    return !!(stats.isFile() && config.ignoreFiles.some(pattern => matchPattern(itemName, pattern)));
+
+
+}
+
+function createEntry(itemPath, itemName, stats, depth) {
+    return {
         depth,
-        path:          dirPath,
-        name:          path.basename(dirPath),
-        dir:           path.dirname(dirPath),
-        isDirectory:   true,
-        intrinsicFileCount,
-        fileCount:     fileCount + intrinsicFileCount, // Include own files and subdirectory files
-        intrinsicDirectorySize,
-        directorySize: directorySize + intrinsicDirectorySize, // Include own size and subdirectory size
-        size:          directorySize + intrinsicDirectorySize, // Include own size and subdirectory size
-        isEmpty:       (directorySize + fileCount) === 0,
-        stats:         await stat(dirPath)
+        path: itemPath,
+        name: itemName,
+        baseName: path.basename(itemName, path.extname(itemPath)),
+        extension: itemName.split('.').pop().toLowerCase(),
+        dir: path.dirname(itemPath),
+        size: stats.size,
+        isFile: stats.isFile(),
+        isDirectory: stats.isDirectory(),
+        modifiedTime: stats.mtime,
+        createdTime: stats.ctime,
+        isAlone: false,
+        stats,
     };
+}
 
-    // Update `isAlone` for files based on the directory information
-    if (intrinsicFileCount === 1) {
-        const singleFilePath = Object.keys(results.files).find(
-          filePath => path.dirname(filePath) === dirPath
-        );
-        if (singleFilePath) {
-            results.files[singleFilePath].isAlone = true;
+async function scanDirectory(dirPath, config) {
+    const results = { directories: new Map(), files: new Map() };
+    const queue = [{ dirPath, depth: 0 }];
+
+    while (queue.length > 0) {
+        const { dirPath, depth } = queue.shift();
+        const items = await readdir(dirPath);
+        const fileStats = await Promise.all(items.map(async item => {
+            const itemPath = path.join(dirPath, item);
+            try {
+                const stats = await stat(itemPath);
+                return { item, itemPath, stats };
+            } catch (error) {
+                logger.fail(`Error accessing ${itemPath}: ${error.message}`);
+                return null;
+            }
+        }));
+
+        for (const fileStat of fileStats) {
+            if (!fileStat) continue; // Skip entries with errors
+            const { item, itemPath, stats } = fileStat;
+            const resolvedItemPath = path.resolve(itemPath);
+            const itemName = path.basename(itemPath);
+
+            if (shouldIgnore(itemName, resolvedItemPath, stats, config)) {
+                logger.text(`Ignoring: ${itemPath}`);
+                continue;
+            } else {
+                logger.text(`Scanning... ${itemPath}`);
+            }
+
+            const entry = createEntry(itemPath, itemName, stats, depth);
+            if (stats.isFile()) {
+                results.files.set(itemPath, entry);
+            } else if (stats.isDirectory()) {
+                results.directories.set(itemPath, entry);
+                queue.push({ dirPath: itemPath, depth: depth + 1 });
+            }
         }
     }
 
-    return { results, fileCount: fileCount + intrinsicFileCount, dirCount };
+    return results;
 }
 
 export default scanDirectory;

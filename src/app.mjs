@@ -21,12 +21,14 @@ import {doHeader} from "./utils/helpers.mjs";
             process.exit(1);
         }
         logger.succeed('Configuration loaded.');
+        console.log(config);
 
         // Scan Directory
         logger.succeed(`Start scan for "${config.scanPath}"`);
         logger.start('Scanning directory...');
-        let scan = await scanDirectory(config.scanPath, config, 0);
-        logger.succeed(`Directory scanned. Found ${(scan.fileCount + scan.dirCount)} items (${scan.fileCount} files, in ${scan.dirCount} directories).`);
+        let scan = await scanDirectory(config.scanPath, config);
+        let rescan = false;
+        logger.succeed(`Directory scanned. Found ${(scan.files.size + scan.directories.size)} items (${scan.files.size} files, in ${scan.directories.size} directories).`);
 
         // Perform Checks based on `actions`
         const operations = {
@@ -43,16 +45,16 @@ import {doHeader} from "./utils/helpers.mjs";
 
         if (config.actions.includes('duplicates')) {
             logger.start('Checking for duplicate files...');
-            const duplicates = await getDuplicateItems(scan.results.files, config.recycleBinPath, config.dupeSetExtensions, config.hashByteLimit);
+            const duplicates = await getDuplicateItems(scan.files, config.recycleBinPath, config.dupeSetExtensions, config.hashByteLimit);
             logger.succeed(`Found a total of ${Object.values(duplicates).reduce((acc, arr) => acc + arr.length, 0)} duplicates for ${Object.entries(duplicates).length} items after hashing.`);
 
             //console.log(newDuplicates);
             for (const duplicate in duplicates) {
-                const dupes = duplicates[duplicate];
-                console.group(`${duplicate} has ${dupes.length} duplicates:`)
+                const dupes = await duplicates[duplicate];
+                //console.group(`${duplicate} has ${dupes.length} duplicates:`)
                 dupes.forEach(dupe => {
-                    console.log(`${dupe.path}${dupe.isInFileset ? ' (part of a duplicate fileset)' : ''}`);
-                    console.log(`Should move to: ${dupe.move_to}`)
+                    //console.log(`${dupe.path}${dupe.isInFileset ? ' (part of a duplicate fileset)' : ''}`);
+                    //console.log(`Should move to: ${dupe.move_to}`)
                     destructivePaths.add(dupe.path); // Add to destructive paths
                     operations.duplicate.push({
                         path: dupe.path,
@@ -61,13 +63,14 @@ import {doHeader} from "./utils/helpers.mjs";
                         move_to: dupe.move_to
                     });
                 })
-                console.groupEnd();
+                //console.groupEnd();*/
             }
+            rescan = true;
         }
 
         if (config.actions.includes('orphans')) {
             logger.start('Checking for orphan files...');
-            const orphans = await getOrphanItems(scan.results.files, config.orphanFileExtensions, config.recycleBinPath);
+            const orphans = await getOrphanItems(scan.files, config.orphanFileExtensions, config.recycleBinPath);
             logger.succeed(`Found ${orphans.length} orphaned files.`);
             orphans.forEach(item => {
                 destructivePaths.add(item.path); // Add to destructive paths
@@ -77,11 +80,12 @@ import {doHeader} from "./utils/helpers.mjs";
                     move_to: item.move_to
                 });
             });
+            rescan = true;
         }
 
         if (config.actions.includes('cleanup')) {
             logger.start('Checking for items to cleanup...');
-            const cleanupItems = await getCleanUpItems(scan.results, config.scanPath, config.recycleBinPath);
+            const cleanupItems = await getCleanUpItems(scan, config.scanPath, config.recycleBinPath);
             logger.succeed(`Found ${cleanupItems.length} items requiring cleaning up.`);
             cleanupItems.forEach(item => {
                 destructivePaths.add(item.path); // Add to destructive paths
@@ -91,13 +95,14 @@ import {doHeader} from "./utils/helpers.mjs";
                     move_to: item.move_to
                 });
             });
+            rescan = true;
         }
 
         //Non-Destructive operations (items can be in multiple of these actions)
 
         if (config.actions.includes('reorganize')) {
             logger.start('Checking if reorganizing is possible...');
-            const reorganizeTheseFiles = await getReorganizeItems(scan.results.files, config.reorganizeTemplate, config.dateThreshold, (config.relativePath || config.scanPath));
+            const reorganizeTheseFiles = await getReorganizeItems(scan.files, config.reorganizeTemplate, config.dateThreshold, (config.relativePath || config.scanPath));
             logger.succeed(`Found ${reorganizeTheseFiles.length} items that can be reorganized.`);
             reorganizeTheseFiles.forEach(item => {
                 if (!destructivePaths.has(item.path)) { // Skip if path is in destructivePaths
@@ -108,12 +113,13 @@ import {doHeader} from "./utils/helpers.mjs";
                     });
                 }
             });
+            rescan = true;
         }
 
         if (config.actions.includes('permissions')) {
             if (config.filePerm && config.dirPerm) {
                 logger.start('Checking permissions...');
-                const wrongPermissions = await getPermissionFiles(scan.results, config.filePerm, config.dirPerm);
+                const wrongPermissions = await getPermissionFiles(scan, config.filePerm, config.dirPerm);
                 logger.succeed(`Found ${wrongPermissions.length} items with wrong permissions.`);
                 wrongPermissions.forEach(item => {
                     if (!destructivePaths.has(item.path)) { // Skip if path is in destructivePaths
@@ -128,12 +134,13 @@ import {doHeader} from "./utils/helpers.mjs";
             } else {
                 logger.warn('Skipping permission checks due to missing config values (filePerm & dirPerm).')
             }
+            rescan = true;
         }
 
         if (config.actions.includes('ownership')) {
             if (config.owner_user && config.owner_group) {
                 logger.start('Checking ownership...');
-                const wrongOwnership = await getOwnershipFiles(scan.results, config.owner_user, config.owner_group);
+                const wrongOwnership = await getOwnershipFiles(scan, config.owner_user, config.owner_group);
                 logger.succeed(`Found ${wrongOwnership.length} items with wrong ownership.`);
                 wrongOwnership.forEach(item => {
                     if (!destructivePaths.has(item.path)) { // Skip if path is in destructivePaths
@@ -151,6 +158,7 @@ import {doHeader} from "./utils/helpers.mjs";
             } else {
                 logger.warn('Skipping ownership checks due to missing config values (owner_user & owner_group).')
             }
+            rescan = true;
         }
 
         // Confirm and Execute
@@ -159,7 +167,7 @@ import {doHeader} from "./utils/helpers.mjs";
         // Do cleanup last
         if (config.actions.includes('post-cleanup')) {
             doHeader('post-cleanup');
-            await postCleanup();
+            await postCleanup(rescan ? null : scan);
         }
 
     } catch (error) {
