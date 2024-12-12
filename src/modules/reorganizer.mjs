@@ -3,7 +3,6 @@ import fs from 'fs/promises';
 import path from 'path';
 import exifParser from 'exif-parser';
 import pLimit from "p-limit";
-import {withConcurrency} from "../utils/helpers.mjs";
 
 const FILE_LIMIT = pLimit(2); // Limit concurrency
 const SUPPORTED_EXIF_EXTENSIONS = new Set(['jpg', 'jpeg', 'tiff', 'heic', 'png']);
@@ -148,15 +147,14 @@ async function getReorganizeItems(filesObject, targetStructure = '/{year}/{month
   }
 
   let progress = 0;
-  const files = filesObject;
-  const promises = [];
 
-  filesObject.forEach((file, filepath) => {
-    // Push the async operation to the promises array
-    promises.push(
-      (async () => {
+  const processFiles = async (files) => {
+    const tasks = Array.from(files, ([value, file]) => {
+      return FILE_LIMIT(async () => {
+
         progress += 1; // Increment progress after processing
         logger.text(`Scanning for dates in files... ${progress}/${files.size}`);
+
         // Simulate async operation, e.g., reading file contents
         const oldestDate = await extractOldestDate(file, dateThreshold);
 
@@ -180,67 +178,25 @@ async function getReorganizeItems(filesObject, targetStructure = '/{year}/{month
 
         if (targetDir.replace(/\/$/, '') !== file.dir.replace(/\/$/, '')) {
           const targetPath = path.join(relPath ?? '', path.join(targetDir, targetName));
-          return {move_to: targetPath, date: oldestDate};
+          return {
+            path: file.path,
+            move_to: targetPath,
+            date: oldestDate
+          };
         }
 
         return null; // Skip if already in the correct directory
 
-      })()
-    );
-  });
+      });
+    });
 
-  // Wait for all async operations to complete
-  const tasks2 = await Promise.all(promises);
+    // Wait for all tasks to complete
+    return await Promise.all(tasks);
+  };
 
-  console.log(tasks2);
+  const processedFiles = await processFiles(filesObject);
 
-
-
-
-
-
-
-
-
-
-  progress = 0;
-
-  // Wrap each file task in a function
-  const tasks = files.map(file => async () => {
-    const oldestDate = await extractOldestDate(file, dateThreshold);
-    progress += 1; // Increment progress after processing
-    logger.text(`Scanning for dates in files... ${progress}/${files.length}`);
-
-    if (!oldestDate.date || file.isDirectory || file.delete) {
-      return null; // Skip files without a valid date, directories, or files to be deleted
-    }
-
-    const year = oldestDate.date.getUTCFullYear();
-    const month = String(oldestDate.date.getUTCMonth() + 1).padStart(2, '0'); // Months are zero-indexed
-    const day = String(oldestDate.date.getUTCDate()).padStart(2, '0');
-
-    const targetDir = targetStructure
-    .replace('{year}', year)
-    .replace('{month}', month)
-    .replace('{day}', day);
-
-    const pathRef = path.basename(path.normalize(file.dir).replace(/\/$/, ''));
-    const targetName = file.name.includes(pathRef)
-      ? file.name
-      : appendToFilename(file.name, ` - ${pathRef}`);
-    const targetPath = path.join(relPath ?? '', path.join(targetDir, targetName));
-
-    if (!file.path.includes(targetDir)) {
-      return {...file, move_to: targetPath, date: oldestDate};
-    }
-    return null; // Skip if already in the correct directory
-  });
-
-  // Use withConcurrency to execute tasks with a limit
-  const reorganize = await withConcurrency(FILE_LIMIT, tasks);
-
-  // Filter out null results
-  return reorganize.filter(item => item !== null);
+  return processedFiles.filter(item => item !== null)
 }
 
 export default getReorganizeItems;
