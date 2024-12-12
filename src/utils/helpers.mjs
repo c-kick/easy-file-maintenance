@@ -62,13 +62,15 @@ export function userConfirm(question, validAnswers = ['y', 'a', 'n', 'c', 's']) 
 
 export async function answerLoop(question, validAnswers = ['y', 'a', 'n', 'c', 's'], actions) {
   let validAnswer = false;
+  let userAnswer;
   while (!validAnswer) {
-    const userAnswer = await userConfirm(question, validAnswers);
+    userAnswer = await userConfirm(question, validAnswers);
 
     if (actions[userAnswer]) {
-      validAnswer = actions[userAnswer]();
+      validAnswer = await actions[userAnswer]();
     }
   }
+  return userAnswer;
 }
 
 /**

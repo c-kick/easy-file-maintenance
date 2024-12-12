@@ -106,7 +106,6 @@ async function executeOperations(operations) {
     for (const operation in operations) {
         if (operations.hasOwnProperty(operation) && operations[operation].length) {
 
-            //todo: integrate answerLoop here
             doHeader(operation);
             let proceed = false;
             if (yesAllActions) {
@@ -115,26 +114,29 @@ async function executeOperations(operations) {
             } else if (answers[operation] && answers[operation] === 'c') {
                 logger.fail(`Stop ${operation} actions`);
             } else {
-                answers[operation] = await userConfirm(`Start ${operation} handling for ${operations[operation].length} items?`);
-
-                if (['s'].includes(answers[operation])) {
-                    console.log(`Items that will be handled:`);
-                    operations[operation].forEach(item => {
-                        console.log(item.path, item);
-                    })
-                    answers[operation] = await userConfirm(`Start ${operation} handling for these ${operations[operation].length} items?`);
-                }
-
-                proceed = ['y','a'].includes(answers[operation]);
-                if (!proceed && ['n', 'c'].includes(answers[operation])) {
-                    if (['c'].includes(answers[operation])) {
-                        logger.fail(`Cancelled all remaining actions`);
-                        break;
-                    } else {
-                        logger.warn(`Skipping ${operation} actions`);
-                    }
-                } else if (['a'].includes(answers[operation])) {
-                    yesAllActions = true;
+                const answer = await answerLoop(`Start ${operation} handling for ${operations[operation].length} items?`, ['y', 'n', 'c', 's'],
+                  {
+                      'y': async () => {
+                          return true;
+                      },
+                      'n': async () => {
+                          logger.warn(`Skipping ${operation} actions`);
+                          return false;
+                      },
+                      'c': async () => {
+                          logger.fail(`Cancelled all remaining actions`);
+                          return true;
+                      },
+                      's': async () => {
+                          console.log(operations[operation]);
+                          return false;
+                      }
+                  });
+                if (answer === 'c') {
+                    proceed = false;
+                    break;
+                } else {
+                    proceed = answer === 'y';
                 }
             }
 

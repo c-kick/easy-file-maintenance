@@ -23,9 +23,10 @@ export function appendToFilename(fileName, appendString) {
  * Extracts potential dates from a file's metadata and name.
  * @param {Object} file - The file object with metadata.
  * @param {Date} dateThreshold - The date threshold for sanity checking.
- * @returns {Date|null} - The oldest valid date or null if none are valid.
+ * @param {boolean} evalFullPath - Whether to process filenames only, or the full path
+ * @returns {Object} - The oldest valid date or null if none are valid, and the source of the date
  */
-export async function extractOldestDate(file, dateThreshold) {
+export async function extractOldestDate(file, dateThreshold, evalFullPath = true) {
   const dates = [];
 
   // Step 1: Check EXIF data
@@ -34,7 +35,10 @@ export async function extractOldestDate(file, dateThreshold) {
     const parser = exifParser.create(buffer);
     const exifData = parser.parse();
     if (exifData.tags.DateTimeOriginal) {
-      dates.push(new Date(exifData.tags.DateTimeOriginal * 1000)); // Convert to milliseconds
+      dates.push({
+        date: new Date(exifData.tags.DateTimeOriginal * 1000), // Convert to milliseconds
+        source: 'exif'
+      });
     }
   } catch {
     // Ignore errors (e.g., non-image files or missing EXIF data)
@@ -42,67 +46,78 @@ export async function extractOldestDate(file, dateThreshold) {
 
   // Step 2: Check the filename and path for dates
   const datePatterns = [
-    /\b(\d{4})[-/]?(\d{2})[-/]?(\d{2})\b/g,    // YYYYMMDD or YYYY-MM-DD
-    /\b(\d{2})[-/]?(\d{2})[-/]?(\d{4})\b/g,    // DDMMYYYY or DD-MM-YYYY
-    /\b(\d{2})[-/]?(\d{2})[-/]?(\d{2})\b/g,    // DDMMYY or DD-MM-YY
-    /\b(\d{10})\b/g                            // Epoch timestamp
+    /\b(\d{4})([-\s]?)(\d{2})([-\s]?)(\d{2})\b/g,    // YYYYMMDD or YYYY-MM-DD
+    /\b(\d{2})([-\s]?)(\d{2})([-\s]?)(\d{4})\b/g,    // DDMMYYYY or DD-MM-YYYY
+    /\b(\d{10})\b/g                                  // Epoch timestamp
   ];
 
+  const targetString = evalFullPath ? file.path : file.name;
+
   for (const pattern of datePatterns) {
-    const matches = file.path.matchAll(pattern); // Match against the entire path and filename
+    const matches = targetString.matchAll(pattern); // Match against the full path or filename
     for (const match of matches) {
-      try {
-        const [fullMatch, part1, part2, part3] = match;
-        let date;
+      const [fullMatch, part1, , part2, , part3] = match; // Ignore separators
+      let date;
 
-        if (fullMatch.length === 10 && !isNaN(fullMatch)) {
-          // Epoch timestamp
-          date = new Date(Number(fullMatch) * 1000);
-        } else if (part3 && part3.length === 4) {
-          // DDMMYYYY or DD-MM-YYYY
-          date = new Date(`${part3}-${part2}-${part1}`);
-        } else if (part3 && part3.length === 2) {
-          // DDMMYY or DD-MM-YY (adjust for year prefix)
-          const fullYear = part3 < 50 ? `20${part3}` : `19${part3}`;
-          date = new Date(`${fullYear}-${part2}-${part1}`);
-        } else {
-          // YYYYMMDD or YYYY-MM-DD
-          date = new Date(`${part1}-${part2}-${part3}`);
+      // Handle epoch timestamps
+      if (pattern === /\b(\d{10})\b/g) {
+        const epoch = Number(fullMatch);
+        if (epoch >= 0) { // Basic sanity check for epoch
+          date = new Date(epoch * 1000);
+          if (!isNaN(date)) {
+            dates.push({ date, source: evalFullPath ? 'path (epoch)' : 'filename (epoch)' });
+          }
         }
+        continue;
+      }
 
-        if (!isNaN(date)) dates.push(date);
-      } catch {
-        // Ignore parsing errors
+      // Parse year, month, day based on position
+      const year = part1.length === 4 ? part1 : part3; // Look for 4-digit year
+      const isStartYear = part1.length === 4;
+      const month = isStartYear ? part2 : part2; // `part2` is always month candidate
+      const day = isStartYear ? part3 : part1;   // Determine day based on year position
+
+      // Validate ranges
+      if (
+        year >= 1900 && year <= 2099 && // Valid year range
+        month >= 1 && month <= 12 &&    // Valid month range
+        day >= 1 && day <= 31           // Valid day range
+      ) {
+        // Construct date
+        date = new Date(`${year}-${month}-${day}`);
+        if (!isNaN(date)) { // Ensure the date is valid
+          dates.push({ date, source: evalFullPath ? 'path' : 'filename' });
+        }
       }
     }
   }
 
-  // Step 3: Check file creation or birth timestamp as a last resort
-  if (file.createdTime) dates.push(new Date(Date.UTC(
-    new Date(file.createdTime).getUTCFullYear(),
-    new Date(file.createdTime).getUTCMonth(),
-    new Date(file.createdTime).getUTCDate(),
-    new Date(file.createdTime).getUTCHours(),
-    new Date(file.createdTime).getUTCMinutes(),
-    new Date(file.createdTime).getUTCSeconds()
-  )));
-  if (file.modifiedTime) dates.push(new Date(Date.UTC(
-    new Date(file.modifiedTime).getUTCFullYear(),
-    new Date(file.modifiedTime).getUTCMonth(),
-    new Date(file.modifiedTime).getUTCDate(),
-    new Date(file.modifiedTime).getUTCHours(),
-    new Date(file.modifiedTime).getUTCMinutes(),
-    new Date(file.modifiedTime).getUTCSeconds()
-  )));
+  // Step 3: Check file creation or birth timestamps as a last resort
+  const timestampSources = [
+    { key: 'birthtime', source: 'timestamps (birthtime)' },
+    { key: 'ctime', source: 'timestamps (ctime)' },
+    { key: 'createdTime', source: 'timestamps (createdTime)' },
+    { key: 'modifiedTime', source: 'timestamps (modifiedTime)' }
+  ];
+
+  timestampSources.forEach(({ key, source }) => {
+    if (file.stats?.[key] || file[key]) {
+      dates.push({
+        date: new Date(file.stats?.[key] || file[key]),
+        source
+      });
+    }
+  });
 
   // Step 4: Determine the oldest date
-  const validDates = dates.filter(date => date > dateThreshold);
+  const validDates = dates.filter(entry => entry.date > dateThreshold);
   if (validDates.length > 0) {
-    return new Date(Math.min(...validDates.map(date => date.getTime())));
+    return validDates.reduce((a, b) => (a.date < b.date ? a : b));
   }
 
-  return null; // No valid dates found
+  return { date: null, source: null, dates }; // No valid dates found
 }
+
 
 /**
  * Reorganizes files into a structured directory hierarchy based on extracted dates.
@@ -125,13 +140,13 @@ async function getReorganizeItems(filesObject, targetStructure = '/{year}/{month
     progress += 1; // Increment progress after processing
     logger.text(`Scanning for dates in files... ${progress}/${files.length}`);
 
-    if (!oldestDate || file.isDirectory || file.delete) {
+    if (!oldestDate.date || file.isDirectory || file.delete) {
       return null; // Skip files without a valid date, directories, or files to be deleted
     }
 
-    const year = oldestDate.getFullYear();
-    const month = String(oldestDate.getMonth() + 1).padStart(2, '0');
-    const day = String(oldestDate.getDate()).padStart(2, '0');
+    const year = oldestDate.date.getFullYear();
+    const month = String(oldestDate.date.getMonth() + 1).padStart(2, '0');
+    const day = String(oldestDate.date.getDate()).padStart(2, '0');
     const targetDir = targetStructure
     .replace('{year}', year)
     .replace('{month}', month)
@@ -144,7 +159,7 @@ async function getReorganizeItems(filesObject, targetStructure = '/{year}/{month
     const targetPath = path.join(relPath ?? '', path.join(targetDir, targetName));
 
     if (!file.path.includes(targetDir)) {
-      return {...file, move_to: targetPath};
+      return {...file, move_to: targetPath, date: oldestDate};
     }
     return null; // Skip if already in the correct directory
   });

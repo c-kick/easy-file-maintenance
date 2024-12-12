@@ -103,7 +103,8 @@ import {doHeader} from "./utils/helpers.mjs";
                 if (!destructivePaths.has(item.path)) { // Skip if path is in destructivePaths
                     operations.reorganize.push({
                         path:    item.path,
-                        move_to: item.move_to
+                        move_to: item.move_to,
+                        date_found:   item.date,
                     });
                 }
             });
