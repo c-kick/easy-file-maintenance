@@ -50,12 +50,12 @@ export default {
   },
   actions:              {
     default: [
+      "pre-cleanup",
       "reorganize",
       "duplicates",
       "orphans",
       "permissions",
       "ownership",
-      //"cleanup",
       "post-cleanup"
     ],
     type:    "object",

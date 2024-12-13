@@ -83,18 +83,24 @@ import {doHeader} from "./utils/helpers.mjs";
             rescan = true;
         }
 
-        if (config.actions.includes('cleanup')) {
+        if (config.actions.includes('pre-cleanup')) {
             logger.start('Checking for items to cleanup...');
-            const cleanupItems = await getCleanUpItems(scan, config.scanPath, config.recycleBinPath);
-            logger.succeed(`Found ${cleanupItems.length} items requiring cleaning up.`);
-            cleanupItems.forEach(item => {
+            const cleanupTheseItems = await getCleanUpItems(scan, config.scanPath, config.recycleBinPath);
+            logger.succeed(`Found ${cleanupTheseItems.directories.length} directories and ${cleanupTheseItems.files.length} files requiring cleaning up before running other actions.`);
+
+            [
+                ...Object.values(cleanupTheseItems.files),
+                ...Object.values(cleanupTheseItems.directories)
+            ].forEach(item => {
                 destructivePaths.add(item.path); // Add to destructive paths
                 operations.cleanup.push({
                     path: item.path,
                     size: item.size,
-                    move_to: item.move_to
+                    move_to: item.move_to,
+                    reason: item.reason
                 });
             });
+            console.log(operations.cleanup);
             rescan = true;
         }
 
@@ -102,9 +108,9 @@ import {doHeader} from "./utils/helpers.mjs";
 
         if (config.actions.includes('reorganize')) {
             logger.start('Checking if reorganizing is possible...');
-            const reorganizeTheseFiles = await getReorganizeItems(scan.files, config.reorganizeTemplate, config.dateThreshold, (config.relativePath || config.scanPath));
+            const reorganizeTheseFiles = await getReorganizeItems(scan, config.reorganizeTemplate, config.dateThreshold, (config.relativePath || config.scanPath));
             logger.succeed(`Found ${reorganizeTheseFiles.length} items that can be reorganized.`);
-            reorganizeTheseFiles.forEach(item => {
+            reorganizeTheseFiles.files.forEach(item => {
                 if (!destructivePaths.has(item.path)) { // Skip if path is in destructivePaths
                     operations.reorganize.push({
                         path:    item.path,

@@ -5,7 +5,42 @@ import exifParser from 'exif-parser';
 import pLimit from "p-limit";
 
 const FILE_LIMIT = pLimit(2); // Limit concurrency
-const SUPPORTED_EXIF_EXTENSIONS = new Set(['jpg', 'jpeg', 'tiff', 'heic', 'png']);
+const SUPPORTED_EXIF_EXTENSIONS = new Set([
+  "jpg",    // JPEG image
+  "jpeg",   // Alternate extension for JPEG
+  "tif",    // TIFF image
+  "tiff",   // Alternate extension for TIFF
+  "png",    // PNG image (limited EXIF support)
+  "webp",   // WEBP image (limited EXIF support)
+  "heif",   // High Efficiency Image Format
+  "heic",   // High Efficiency Image Coding
+  "dng",    // Digital Negative (RAW)
+  "arw",    // Sony Alpha RAW
+  "cr2",    // Canon RAW 2
+  "cr3",    // Canon RAW 3
+  "nef",    // Nikon RAW
+  "nrw",    // Nikon RAW (Coolpix)
+  "orf",    // Olympus RAW
+  "raf",    // Fujifilm RAW
+  "rw2",    // Panasonic RAW
+  "raw",    // Generic RAW
+  "rwl",    // Leica RAW
+  "sr2",    // Sony RAW 2
+  "srw",    // Samsung RAW
+  "3fr",    // Hasselblad RAW
+  "ari",    // ARRI RAW
+  "bay",    // Casio RAW
+  "cap",    // Phase One RAW
+  "iiq",    // Phase One RAW
+  "eip",    // Phase One Enhanced Image Package
+  "erf",    // Epson RAW
+  "fff",    // Imacon/Hasselblad RAW
+  "mef",    // Mamiya RAW
+  "mos",    // Leaf RAW
+  "mrw",    // Minolta RAW
+  "pef",    // Pentax RAW
+  "x3f"     // Sigma RAW (Foveon)
+]);
 
 /**
  * Append a string to the filename while preserving its extension.
@@ -27,35 +62,29 @@ export function appendToFilename(fileName, appendString) {
  * @returns {Object} - The oldest valid date or null if none are valid, and the source of the date
  */
 export async function extractOldestDate(file, dateThreshold, evalFullPath = true) {
-  // Step 0: Skip files without supported extensions for EXIF
-  if (!SUPPORTED_EXIF_EXTENSIONS.has(file.extension.toLowerCase())) {
-    return { date: null, source: null, dates: [] }; // No EXIF support
-  }
-
   const dates = [];
   let fh;
 
-  // Step 1: Check EXIF data
-  try {
-    /*const buffer = await fs.readFile(file.path);
-    const parser = exifParser.create(buffer);
-    const exifData = parser.parse();*/
-    fh = await fs.open(file.path, 'r');
-    const buffer = Buffer.alloc(64 * 1024); // 64KB buffer
-    await fh.read(buffer, 0, buffer.length, 0);
-    const parser = exifParser.create(buffer);
-    const exifData = parser.parse();
-    if (exifData && exifData.tags.DateTimeOriginal) {
-      dates.push({
-        date: new Date(exifData.tags.DateTimeOriginal * 1000), // Convert to milliseconds
-        source: 'exif'
-      });
-    }
-  } catch {
-    // Ignore errors (e.g., non-image files or missing EXIF data)
-  } finally {
-    if (fh) {
-      await fh.close();
+  // Step 1: Check for EXIF data
+  if (SUPPORTED_EXIF_EXTENSIONS.has(file.extension.toLowerCase())) {
+    try {
+      fh = await fs.open(file.path, 'r');
+      const buffer = Buffer.alloc(64 * 1024); // 64KB buffer
+      await fh.read(buffer, 0, buffer.length, 0);
+      const parser = exifParser.create(buffer);
+      const exifData = parser.parse();
+      if (exifData && exifData.tags.DateTimeOriginal) {
+        dates.push({
+          date: new Date(exifData.tags.DateTimeOriginal * 1000), // Convert to milliseconds
+          source: 'exif'
+        });
+      }
+    } catch {
+      // Ignore errors (e.g., non-image files or missing EXIF data)
+    } finally {
+      if (fh) {
+        await fh.close();
+      }
     }
   }
 
@@ -136,18 +165,17 @@ export async function extractOldestDate(file, dateThreshold, evalFullPath = true
 
 /**
  * Reorganizes files into a structured directory hierarchy based on extracted dates.
- * @param {object} filesObject - Object containing file details from the scanner.
+ * @param {object} items - Object containing file details from the scanner.
  * @param {string} targetStructure - The target directory structure (e.g., "/year/month/").
  * @param {Date} dateThreshold - The date threshold for sanity checking.
  * @param relPath
  */
-async function getReorganizeItems(filesObject, targetStructure = '/{year}/{month}/', dateThreshold, relPath) {
+async function getReorganizeItems(items, targetStructure = '/{year}/{month}/', dateThreshold, relPath) {
   if (!dateThreshold) {
     dateThreshold = new Date('1995-01-01');
   }
 
   let progress = 0;
-
   const processFiles = async (files) => {
     const tasks = Array.from(files, ([value, file]) => {
       return FILE_LIMIT(async () => {
@@ -194,9 +222,9 @@ async function getReorganizeItems(filesObject, targetStructure = '/{year}/{month
     return await Promise.all(tasks);
   };
 
-  const processedFiles = await processFiles(filesObject);
+  const processedFiles = await processFiles(items.files);
 
-  return processedFiles.filter(item => item !== null)
+  return ({ ...items, files: processedFiles.filter(item => item !== null) })
 }
 
 export default getReorganizeItems;
