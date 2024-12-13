@@ -47,6 +47,8 @@ async function getCleanUpItems(items, scanDir, binPath) {
 
                 // Exclude items nested in a path already marked for removal and skip if path is the path we're scanning
                 if (removalPaths.has(item.dir) || (item.isDirectory && item.path === scanDir)) {
+                    // Add the item's path to the removal set, else recursion will fail
+                    removalPaths.add(item.path);
                     return null;
                 }
 
@@ -59,7 +61,7 @@ async function getCleanUpItems(items, scanDir, binPath) {
                     return {
                         ...item,
                         move_to: rebasePath(binPath, item.path),
-                        reason:  `${item.consideredEmpty ? `is considered empty ${!item.isEmpty ? '(is not actually empty, but contains ignored items)' : ''}` : item.delete ? 'should be deleted' : 'unknown'}`
+                        reason:  `${item.consideredEmpty ? `is considered empty (${!item.isEmpty ? 'is not actually empty, but' : ''} contains empty directories and/or ignored files)'}` : item.delete ? 'should be deleted' : 'unknown'}`
                     };
                 }
 

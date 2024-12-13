@@ -7,9 +7,9 @@ import getOrphanItems from './modules/orphanDetector.mjs';
 import getPermissionFiles from './modules/permissionChecker.mjs';
 import getReorganizeItems from "./modules/reorganizer.mjs";
 import getCleanUpItems from "./modules/getCleanUpItems.mjs";
-import executeOperations, {postCleanup} from './utils/executor.mjs';
 import getOwnershipFiles from "./modules/ownershipChecker.mjs";
 import {doHeader} from "./utils/helpers.mjs";
+import executeOperations from "./utils/executor.mjs";
 
 (async () => {
     logger.start('Loading configuration...');
@@ -32,12 +32,13 @@ import {doHeader} from "./utils/helpers.mjs";
 
         // Perform Checks based on `actions`
         const operations = {
-            cleanup: [],
+            precleanup: [],
             duplicate: [],
             orphan: [],
             permissions: [],
             ownership: [],
-            reorganize: []
+            reorganize: [],
+            postcleanup: []
         };
         const destructivePaths = new Set(); // Tracks paths marked for destructive actions
 
@@ -84,23 +85,25 @@ import {doHeader} from "./utils/helpers.mjs";
         }
 
         if (config.actions.includes('pre-cleanup')) {
-            logger.start('Checking for items to cleanup...');
-            const cleanupTheseItems = await getCleanUpItems(scan, config.scanPath, config.recycleBinPath);
-            logger.succeed(`Found ${cleanupTheseItems.directories.length} directories and ${cleanupTheseItems.files.length} files requiring cleaning up before running other actions.`);
+            logger.start('Checking for items to pre-clean...');
+            const preCleanTheseItems = await getCleanUpItems(scan, config.scanPath, config.recycleBinPath);
+            logger.succeed(`Found ${preCleanTheseItems.directories.length} directories and ${preCleanTheseItems.files.length} files requiring cleaning up before running other actions.`);
 
             [
-                ...Object.values(cleanupTheseItems.files),
-                ...Object.values(cleanupTheseItems.directories)
+                ...Object.values(preCleanTheseItems.files),
+                ...Object.values(preCleanTheseItems.directories)
             ].forEach(item => {
                 destructivePaths.add(item.path); // Add to destructive paths
-                operations.cleanup.push({
+                operations.precleanup.push({
+                    depth: item.depth,
+                    dir: item.dir,
                     path: item.path,
                     size: item.size,
                     move_to: item.move_to,
                     reason: item.reason
                 });
             });
-            console.log(operations.cleanup);
+            console.log(operations.precleanup);
             rescan = true;
         }
 
@@ -170,11 +173,32 @@ import {doHeader} from "./utils/helpers.mjs";
         // Confirm and Execute
         await executeOperations(operations);
 
-        // Do cleanup last
+        // Do another cleanup last
         if (config.actions.includes('post-cleanup')) {
             doHeader('post-cleanup');
-            await postCleanup(rescan ? null : scan);
+            logger.start('Checking for items to post-clean...');
+            const postCleanTheseItems = await getCleanUpItems(scan, config.scanPath, config.recycleBinPath);
+            logger.succeed(`Found ${postCleanTheseItems.directories.length} directories and ${postCleanTheseItems.files.length} files requiring cleaning up after running all actions.`);
+
+            [
+                ...Object.values(postCleanTheseItems.files),
+                ...Object.values(postCleanTheseItems.directories)
+            ].forEach(item => {
+                destructivePaths.add(item.path); // Add to destructive paths
+                operations.postcleanup.push({
+                    depth: item.depth,
+                    dir: item.dir,
+                    path: item.path,
+                    size: item.size,
+                    move_to: item.move_to,
+                    reason: item.reason
+                });
+            });
+            console.log(operations.postcleanup);
         }
+
+        // Confirm and Execute
+        await executeOperations({postcleanup : operations.postcleanup});
 
     } catch (error) {
         logger.fail(`An error occurred: ${error.message}`).stop();
