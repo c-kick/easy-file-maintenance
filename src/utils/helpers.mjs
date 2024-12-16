@@ -127,7 +127,7 @@ export function doHeader(message = '', characters = 50) {
  * @param {number} chunkSize - Number of bytes to hash.
  * @returns {Promise<string>} - The hash of the file chunk.
  */
-export async function hashFileChunk(filePath, chunkSize = 262144) {
+export async function hashFileChunk(filePath, chunkSize = 131072) {
   const fileHandle = await fs.open(filePath, 'r');
   const buffer = Buffer.alloc(chunkSize);
   try {

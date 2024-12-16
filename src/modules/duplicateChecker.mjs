@@ -1,10 +1,6 @@
-import pLimit from 'p-limit'; // Use this library to control concurrency
-import {hashFileChunk, hashString, rebasePath, withConcurrency} from "../utils/helpers.mjs";
+import {hashFileChunk, rebasePath} from "../utils/helpers.mjs";
 import logger from "../utils/logger.mjs";
 import crypto from "crypto";
-
-const FILE_LIMIT = pLimit(2); // Limit concurrency
-const CHUNK_SIZE = 131072; // Default chunk size for partial hashing
 
 /**
  * Determines the "original" file from a list of duplicate files.
@@ -73,6 +69,15 @@ function getSideCarFiles(file, filesInThisDir, extensions = ['jpg', 'jpeg', 'mp4
     return sideCarFiles;
 }
 
+function filterGroupsWithMultipleEntries(groupedItems) {
+    return Object.keys(groupedItems).reduce((filtered, key) => {
+        if (groupedItems[key].length > 1) {
+            filtered[key] = groupedItems[key];
+        }
+        return filtered;
+    }, {});
+}
+
 async function calculateDirectoryHash(dirEntry, results) {
     const hash = crypto.createHash('md5');
     const childFiles = Array.from(results.files.values()).filter((file) => file.dir === dirEntry.path);
@@ -87,10 +92,58 @@ async function calculateDirectoryHash(dirEntry, results) {
     return hash.digest('hex');
 }
 
+/**
+ * Processes grouped items to identify duplicates by calculating hashes and filtering based on unique hashes.
+ *
+ * @template T
+ * @param {Object<string, T[]>} groupedItems - An object where keys represent groups and values are arrays of items to process.
+ * @param {function(T): Promise<string>} hashFunction - A function that calculates a hash for an item. Must return a promise resolving to the item's hash.
+ * @param {function(T[]): Promise<T>} determineOriginal - A function that determines the original item from a group. Must return a promise resolving to the original item.
+ * @param {function(T, number): Object} [processExtras] - Optional function to process additional properties for each duplicate.
+ *        Receives the item and its index as arguments. Defaults to a no-op function.
+ * @returns {Promise<Object<string, T[]>>} - A promise resolving to an object where keys are group keys and values are arrays of processed duplicate items.
+ *
+ */
+async function processGroupedItems(groupedItems, hashFunction, determineOriginal, processExtras = () => ({})) {
+    const duplicates = {};
+
+    for (const [key, items] of Object.entries(filterGroupsWithMultipleEntries(groupedItems))) {
+        if (items.length > 1) {
+            const originalItem = await determineOriginal(items);
+
+            // Hash each item and log the operation
+            const hashes = await Promise.all(
+              items.map(async item => {
+                  logger.text(`Hashing ${item.isFile ? 'file' : 'directory'} ${item.path}...`);
+                  return await hashFunction(item);
+              })
+            );
+
+            // Identify duplicate hashes
+            const uniqueHashes = new Set(
+              hashes.filter((hash, idx, arr) => arr.indexOf(hash) !== idx && arr.lastIndexOf(hash) === idx)
+            );
+
+            // Filter and map duplicates
+            duplicates[key] = items
+            .filter((item, idx) => uniqueHashes.has(hashes[idx]) && item !== originalItem)
+            .map((item, idx) => ({
+                ...item,
+                hash: hashes[idx],
+                duplicate_of: originalItem.path,
+                ...processExtras(item, idx) // Add extra properties if needed
+            }));
+        }
+    }
+
+    return duplicates;
+}
+
+
 async function getDuplicateItems(items, binPath) {
 
-    //first handle directories
 
+    //first handle directories
     const groupedDirs = {};
     items.directories.forEach((dir) => {
         const key = [dir.intrinsicSize, dir.size, dir.fileCount, dir.stats.nlink, dir.stats.size].join('_');
@@ -98,26 +151,29 @@ async function getDuplicateItems(items, binPath) {
         if (dir.size > 0) groupedDirs[key].push(dir);
     });
 
-    const duplicateDirs = {};
-    logger.text(`Found ${Object.entries(groupedDirs).length} potential duplicate directories.`);
-    for (const [key, dirs] of Object.entries(groupedDirs)) {
-        if (dirs.length > 1) {
-            const originalDir = await determineOriginal(dirs);
-            const dirHashes = await Promise.all(dirs.map((dir) => {
-                logger.start(`Hashing directory ${dir.path}...`);
-                return calculateDirectoryHash(dir, items)
-            }));
-            const uniqueHashes = new Set(
-              dirHashes.filter((item, index, arr) => arr.indexOf(item) !== index && arr.lastIndexOf(item) === index)
-            );
-            duplicateDirs[key] = dirs
-            .filter((dir, idx) => uniqueHashes.has(dirHashes[idx]) && dir !== originalDir)
-            .map((file, idx) => ({...file, hash: dirHashes[idx], duplicate_of: originalDir.path}));
-        }
-    }
-    const duplicateDirPaths = Object.values(duplicateDirs).flat().map(dir => dir.path);
+    const duplicateDirs = await processGroupedItems(
+      groupedDirs,
+      dir => calculateDirectoryHash(dir, items),
+      determineOriginal,
+    );
+
+    //create a set of duplicate directory paths found, to cross-reference files later
+    const duplicateDirPaths = new Set(
+      Object.values(duplicateDirs).flat().map(dir => dir.path)
+    );
+
 
     //now handle files
+    const filesBySize = {};
+    items.files.forEach((file) => {
+        if (duplicateDirPaths.has(file.dir)) {
+            //file is in a duplicate directory, so can be ignored
+            return
+        }
+        const key = `${file.size}`;
+        if (!filesBySize[key]) filesBySize[key] = [];
+        filesBySize[key].push(file);
+    });
 
     const filesByDir = {};
     items.files.forEach((file) => {
@@ -126,64 +182,42 @@ async function getDuplicateItems(items, binPath) {
         return filesByDir;
     }, {});
 
-    const groupedFiles = {};
-    items.files.forEach((file) => {
-        if (duplicateDirPaths.includes(file.dir)) {
-            //file is in a duplicate directory, so can be ignored
-            return
-        }
-        const key = `${file.size}_${file.extension}`;
-        if (!groupedFiles[key]) groupedFiles[key] = [];
-        groupedFiles[key].push(file);
-    });
+    const duplicateFiles = await processGroupedItems(
+      filesBySize,
+      file => hashFileChunk(file.path),
+      determineOriginal,
+      (file, idx) => ({
+          sidecars: getSideCarFiles(file, filesByDir).map(sidecarFile => ({
+              ...sidecarFile,
+              move_to: rebasePath(binPath, sidecarFile.path)
+          }))
+      })
+    );
 
-    const duplicateFiles = {};;
-    logger.text(`Found ${Object.entries(groupedFiles).length} potential duplicate files.`);
-    for (const [key, files] of Object.entries(groupedFiles)) {
-        if (files.length > 1) {
-            const originalFile = await determineOriginal(files);
-            const hashedGroup = await Promise.all(files.map(async file => {
-                logger.start(`Hashing file ${file.path}...`);
-                return await hashFileChunk(file.path);
-            }));
-            const uniqueHashes = new Set(
-              hashedGroup.filter((item, index, arr) => arr.indexOf(item) !== index && arr.lastIndexOf(item) === index)
-            );
-            duplicateFiles[key] = files
-            .filter((file, idx) => uniqueHashes.has(hashedGroup[idx]) && file !== originalFile)
-            .map((file, idx) => ({...file,
-                hash: hashedGroup[idx],
-                duplicate_of: originalFile.path,
-                sidecars : getSideCarFiles(file, filesByDir).map(sidecarFile => ({
-                    ...sidecarFile,
-                    move_to: rebasePath(binPath, sidecarFile.path)
-                }))
-            }));
-        }
-    }
+    //create a set of sidecar files found
+    const sidecarPaths = new Set(
+      Object.values(duplicateFiles).flat().flatMap(file =>
+        (file.sidecars || []).map(sidecar => sidecar.path)
+      )
+    );
 
     //filter out any duplicates that are sidecars, and add move_to paths
-    const duplicateFilesFiltered = Object.values(duplicateFiles)
+    const returnFiles = Object.values(duplicateFiles)
     .flat() // Flatten the object values into a single array
-    .filter((duplicate, _, allDuplicates) => {
-        // Extract all `path` values from sidecars across all duplicates
-        const sidecarPaths = allDuplicates.flatMap(item =>
-          (item.sidecars || []).map(sidecar => sidecar.path)
-        );
-        return !sidecarPaths.includes(duplicate.path);
-    }).map(file => ({
+    .filter(file => !sidecarPaths.has(file.path))
+    .map(file => ({
         ...file,
         move_to: rebasePath(binPath, file.path)
     }));
 
-    const duplicateDirsFiltered = Object.values(duplicateDirs).flat().map(dir => ({
+    const returnDirs = Object.values(duplicateDirs).flat().map(dir => ({
         ...dir,
         move_to: rebasePath(binPath, dir.path)
     }));
 
     return ({
-        directories: duplicateDirsFiltered,
-        files: duplicateFilesFiltered
+        directories: returnDirs,
+        files: returnFiles
     });
 }
 
