@@ -170,11 +170,7 @@ export async function extractOldestDate(file, dateThreshold, evalFullPath = true
  * @param {Date} dateThreshold - The date threshold for sanity checking.
  * @param relPath
  */
-async function getReorganizeItems(items, targetStructure = '/{year}/{month}/', dateThreshold, relPath) {
-  if (!dateThreshold) {
-    dateThreshold = new Date('1995-01-01');
-  }
-
+async function getReorganizeItems(items, targetStructure = '/{year}/{month}/', dateThreshold = new Date('1995-01-01'), relPath) {
   let progress = 0;
   const processFiles = async (files) => {
     const tasks = Array.from(files, ([value, file]) => {

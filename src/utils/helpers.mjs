@@ -4,8 +4,6 @@ import logger from '../utils/logger.mjs';
 import fs from "fs/promises";
 import crypto from "crypto";
 
-const CHUNK_SIZE = 131072; // Default chunk size for partial hashing
-
 // Normalizes a given path, removing any trailing slashes and handling relative paths
 export function normalizePath(thisPath) {
   // Convert the path to an absolute path and normalize it
@@ -129,7 +127,7 @@ export function doHeader(message = '', characters = 50) {
  * @param {number} chunkSize - Number of bytes to hash.
  * @returns {Promise<string>} - The hash of the file chunk.
  */
-export async function hashFileChunk(filePath, chunkSize = CHUNK_SIZE) {
+export async function hashFileChunk(filePath, chunkSize = 262144) {
   const fileHandle = await fs.open(filePath, 'r');
   const buffer = Buffer.alloc(chunkSize);
   try {

@@ -61,13 +61,13 @@ export default {
     type:    "object",
     required: true,
   },
-  dupeSetExtensions: {
-    default: ['jpg', 'jpeg', 'mp4', 'avi'],
-    type:    "object",
-  },
   orphanFileExtensions: {
     default: [".aae", ".xml", ".ini"],
     type:    "object",
+  },
+  handleSidecarFiles: {
+    default: true,
+    type: "boolean"
   },
 
   dateThreshold: {

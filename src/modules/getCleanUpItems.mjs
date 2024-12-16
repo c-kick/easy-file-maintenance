@@ -1,7 +1,6 @@
 import {rebasePath} from "../utils/helpers.mjs";
 import pLimit from "p-limit";
 import logger from "../utils/logger.mjs";
-import path from "path";
 
 const FILE_LIMIT = pLimit(2); // Limit concurrency
 
@@ -75,12 +74,9 @@ async function getCleanUpItems(items, scanDir, binPath) {
     }
 
     //Directories should be processed first to correctly establish emptiness
-    const processedDirs = await processItems(items.directories);
-    const processedFiles = await processItems(items.files);
-
     return ({
-        directories: processedDirs.filter(item => item !== null),
-        files: processedFiles.filter(item => item !== null)
+        directories: (await processItems(items.directories)).filter(item => item !== null),
+        files: (await processItems(items.files)).filter(item => item !== null)
     });
 }
 

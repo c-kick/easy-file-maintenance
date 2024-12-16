@@ -3,10 +3,9 @@ import {answerLoop, doHeader, userConfirm} from "./helpers.mjs";
 import fs from 'fs/promises';
 import fsExtra from 'fs-extra';
 import path from 'path';
-import scanDirectory from "../modules/scanner.mjs";
 import configLoader from "../modules/configLoader.mjs";
-import getCleanUpItems from "../modules/getCleanUpItems.mjs";
 
+const config = configLoader;
 
 /**
  * Performs the specified file operation.
@@ -19,15 +18,20 @@ async function doOperation(item) {
 
     try {
         if (item.hasOwnProperty('move_to')) {
-            const destinationPath = item.move_to;
-
             // Create target directory if it does not exist
-            await fs.mkdir(path.dirname(destinationPath), { recursive: true });
+            await fs.mkdir(path.dirname(item.move_to), { recursive: true });
 
             // Move the file
-            fsExtra.moveSync(item.path, destinationPath, { overwrite: true });
-            success = true;
+            fsExtra.moveSync(item.path, item.move_to, { overwrite: true });
             size = item.size ?? 0;
+            if (item.sidecarFiles && item.sidecarFiles.length > 0 && config.handleSidecarFiles) {
+                item.sidecarFiles.forEach((file) => {
+                    console.log(`Also moving sidecar file "${file.path}"`);
+                    fsExtra.moveSync(file.path, file.move_to, { overwrite: true });
+                    size += file.size;
+                })
+            }
+            success = true;
         } else if (item.hasOwnProperty('change_mode')) {
             // Change file permissions
             await fs.chmod(item.path, item.fsChmodValue);

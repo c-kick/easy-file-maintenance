@@ -11,6 +11,8 @@ import getOwnershipFiles from "./modules/ownershipChecker.mjs";
 import {doHeader} from "./utils/helpers.mjs";
 import executeOperations from "./utils/executor.mjs";
 
+//todo: rescanning should be considered only if destructive actions have been TAKEN, not if they're evaluated
+
 (async () => {
     logger.start('Loading configuration...');
     try {
@@ -46,26 +48,19 @@ import executeOperations from "./utils/executor.mjs";
 
         if (config.actions.includes('duplicates')) {
             logger.start('Checking for duplicate files...');
-            const duplicates = await getDuplicateItems(scan.files, config.recycleBinPath, config.dupeSetExtensions, config.hashByteLimit);
-            logger.succeed(`Found a total of ${Object.values(duplicates).reduce((acc, arr) => acc + arr.length, 0)} duplicates for ${Object.entries(duplicates).length} items after hashing.`);
+            const duplicates = await getDuplicateItems(scan, config.recycleBinPath);
+            logger.succeed(`Found a total of ${duplicates.directories.length} directory duplicates and ${duplicates.files.length} file duplicates.`);
 
-            //console.log(newDuplicates);
-            for (const duplicate in duplicates) {
-                const dupes = await duplicates[duplicate];
-                //console.group(`${duplicate} has ${dupes.length} duplicates:`)
-                dupes.forEach(dupe => {
-                    //console.log(`${dupe.path}${dupe.isInFileset ? ' (part of a duplicate fileset)' : ''}`);
-                    //console.log(`Should move to: ${dupe.move_to}`)
-                    destructivePaths.add(dupe.path); // Add to destructive paths
-                    operations.duplicate.push({
-                        path: dupe.path,
-                        size: dupe.size,
-                        original: duplicate,
-                        move_to: dupe.move_to
-                    });
-                })
-                //console.groupEnd();*/
-            }
+            Object.values(duplicates).flat().forEach(dupe => {
+                destructivePaths.add(dupe.path); // Add the file to destructive paths
+                operations.duplicate.push({
+                    path: dupe.path,
+                    size: dupe.size,
+                    original: dupe.duplicate_of,
+                    sidecarFiles: dupe.sidecars ?? [],
+                    move_to: dupe.move_to
+                });
+            })
             rescan = true;
         }
 
