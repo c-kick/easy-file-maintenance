@@ -2,7 +2,7 @@ import {rebasePath} from "../utils/helpers.mjs";
 import pLimit from "p-limit";
 import logger from "../utils/logger.mjs";
 
-const FILE_LIMIT = pLimit(2); // Limit concurrency
+const FILE_LIMIT = pLimit(5); // Limit concurrency
 
 /**
  * Moves empty files and directories to the specified recycle bin while retaining their relative paths.

@@ -169,10 +169,12 @@ import executeOperations from "./utils/executor.mjs";
             doHeader('post-cleanup');
             logger.start('Checking for items to post-clean...');
             const postCleanTheseItems = await getCleanUpItems(scan, config.scanPath, config.recycleBinPath);
-            logger.succeed(`Found ${postCleanTheseItems.directories.length} directories and ${postCleanTheseItems.files.length} files requiring cleaning up after running all actions.`);
+            logger.succeed(`Found ${postCleanTheseItems.directories.length} directories and ${postCleanTheseItems.files.length} files requiring cleaning up after running all actions, totaling ${formatBytes(postCleanTheseItems.size)}.`);
 
-            const allEntries = new Map([...postCleanTheseItems.files, ...postCleanTheseItems.directories]);
-            allEntries.forEach(item => {
+            [
+                ...Object.values(postCleanTheseItems.files),
+                ...Object.values(postCleanTheseItems.directories)
+            ].forEach(item => {
                 destructivePaths.add(item.path); // Add to destructive paths
                 operations.postCleanup.push({
                     depth: item.depth,
