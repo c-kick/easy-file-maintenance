@@ -183,8 +183,8 @@ async function getReorganizeItems(items, targetStructure = '/{year}/{month}/', d
         // Simulate async operation, e.g., reading file contents
         const oldestDate = await extractOldestDate(file, dateThreshold);
 
-        if (!oldestDate.date || file.isDirectory || file.delete) {
-          return null; // Skip files without a valid date, directories, or files to be deleted
+        if (!oldestDate.date || file.isDirectory || file.delete || file.ignore) {
+          return null; // Skip files without a valid date, directories, files to be deleted, or ignored files
         }
 
         const year = oldestDate.date.getUTCFullYear();
@@ -196,16 +196,15 @@ async function getReorganizeItems(items, targetStructure = '/{year}/{month}/', d
         .replace('{month}', month)
         .replace('{day}', day));
 
-        const pathRef = normalizePath(file.dir);
+        const pathRef = normalizePath(file.dir).replace(relPath, '').replace(/[\\/]/g, '_');
         const targetName = file.name.includes(pathRef)
           ? file.name
-          : appendToFilename(file.name, ` - ${pathRef}`);
+          : appendToFilename(file.name, `_${pathRef}`);
 
-        if (targetDir.replace(/\/$/, '') !== file.dir.replace(/\/$/, '')) {
-          const targetPath = path.join(relPath ?? '', path.join(targetDir, targetName));
+        if (normalizePath(targetDir) !== normalizePath(file.dir)) {
           return {
             path: file.path,
-            move_to: targetPath,
+            move_to: path.join(targetDir, targetName),
             date: oldestDate
           };
         }

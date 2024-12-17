@@ -17,7 +17,7 @@ async function doOperation(item) {
     let size = 0;
 
     try {
-        if (item.hasOwnProperty('move_to')) {
+        if (item.hasOwnProperty('move_to') && item.move_to !== undefined) {
             // Create target directory if it does not exist
             await fs.mkdir(path.dirname(item.move_to), { recursive: true });
 
@@ -32,16 +32,16 @@ async function doOperation(item) {
                 })
             }
             success = true;
-        } else if (item.hasOwnProperty('change_mode')) {
+        } else if (item.hasOwnProperty('change_mode') && item.change_mode !== undefined) {
             // Change file permissions
             await fs.chmod(item.path, item.fsChmodValue);
             success = true;
             size = item.size ?? 0;
-        } else if (item.hasOwnProperty('new_owner_id') && item.hasOwnProperty('new_group_id')) {
+        } else if (item.hasOwnProperty('new_owner_id') && item.hasOwnProperty('new_group_id') && item.new_group_id !== undefined && item.new_owner_id !== undefined) {
             // Change ownership
             await fs.chown(item.path, item.new_owner_id, item.new_group_id);
             success = true;
-        } else if (item.hasOwnProperty('action')) {
+        } else if (item.hasOwnProperty('action') && item.action !== undefined) {
             // Change file permissions
             const result = await item.action(item);
             success = result.success;

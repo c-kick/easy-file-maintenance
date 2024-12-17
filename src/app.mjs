@@ -55,14 +55,16 @@ import executeOperations from "./utils/executor.mjs";
             logger.succeed(`Found ${duplicates.directories.length} directory duplicates and ${duplicates.files.length} file duplicates by hash, totaling ${formatBytes(duplicates.size)}.`);
 
             Object.values(duplicates).flat().forEach(dupe => {
-                destructivePaths.add(dupe.path); // Add the file to destructive paths
-                operations.duplicate.push({
-                    path: dupe.path,
-                    size: dupe.size,
-                    original: dupe.duplicate_of,
-                    sidecarFiles: dupe.sidecars ?? [],
-                    move_to: dupe.move_to
-                });
+                if (dupe.path && dupe.move_to) {
+                    destructivePaths.add(dupe.path); // Add the file to destructive paths
+                    operations.duplicate.push({
+                        path: dupe.path,
+                        size: dupe.size,
+                        original: dupe.duplicate_of,
+                        sidecarFiles: dupe.sidecars ?? [],
+                        move_to: dupe.move_to
+                    });
+                }
             })
         }
 
@@ -91,6 +93,7 @@ import executeOperations from "./utils/executor.mjs";
             ].forEach(item => {
                 destructivePaths.add(item.path); // Add to destructive paths
                 operations.preCleanup.push({
+                    ...item,
                     depth: item.depth,
                     dir: item.dir,
                     path: item.path,
@@ -167,25 +170,29 @@ import executeOperations from "./utils/executor.mjs";
         // Do another cleanup last
         if (config.actions.includes('post-cleanup')) {
             doHeader('post-cleanup');
-            logger.start('Checking for items to post-clean...');
-            const postCleanTheseItems = await getCleanUpItems(scan, config.scanPath, config.recycleBinPath);
-            logger.succeed(`Found ${postCleanTheseItems.directories.length} directories and ${postCleanTheseItems.files.length} files requiring cleaning up after running all actions, totaling ${formatBytes(postCleanTheseItems.size)}.`);
+            if (!Object.values(operations).flat().length) {
+                logger.succeed('No operations required, skipping post cleanup check.')
+            } else {
+                logger.start('Checking for items to post-clean...');
+                scan = await scanDirectory(config.scanPath, config);
+                const postCleanTheseItems = await getCleanUpItems(scan, config.scanPath, config.recycleBinPath);
+                logger.succeed(`Found ${postCleanTheseItems.directories.length} directories and ${postCleanTheseItems.files.length} files requiring cleaning up after running all actions, totaling ${formatBytes(postCleanTheseItems.size)}.`);
 
-            [
-                ...Object.values(postCleanTheseItems.files),
-                ...Object.values(postCleanTheseItems.directories)
-            ].forEach(item => {
-                destructivePaths.add(item.path); // Add to destructive paths
-                operations.postCleanup.push({
-                    depth: item.depth,
-                    dir: item.dir,
-                    path: item.path,
-                    size: item.size,
-                    move_to: item.move_to,
-                    reason: item.reason
+                [
+                    ...Object.values(postCleanTheseItems.files),
+                    ...Object.values(postCleanTheseItems.directories)
+                ].forEach(item => {
+                    destructivePaths.add(item.path); // Add to destructive paths
+                    operations.postCleanup.push({
+                        depth: item.depth,
+                        dir: item.dir,
+                        path: item.path,
+                        size: item.size,
+                        move_to: item.move_to,
+                        reason: item.reason
+                    });
                 });
-            });
-            console.log(operations.postCleanup);
+            }
         }
 
         // Confirm and Execute
