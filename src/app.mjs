@@ -164,15 +164,17 @@ import executeOperations from "./utils/executor.mjs";
             }
         }
 
-        // Confirm and Execute
-        await executeOperations(operations);
+        if (Object.values(operations).flat().length) {
+            // Confirm and Execute
+            await executeOperations(operations);
+        }
 
         // Do another cleanup last
         if (config.actions.includes('post-cleanup')) {
-            doHeader('post-cleanup');
             if (!Object.values(operations).flat().length) {
-                logger.succeed('No operations required, skipping post cleanup check.')
+                logger.succeed('No operations required, skipping post cleanup check.');
             } else {
+                doHeader('post-cleanup');
                 logger.start('Checking for items to post-clean...');
                 scan = await scanDirectory(config.scanPath, config);
                 const postCleanTheseItems = await getCleanUpItems(scan, config.scanPath, config.recycleBinPath);
@@ -192,11 +194,12 @@ import executeOperations from "./utils/executor.mjs";
                         reason: item.reason
                     });
                 });
+
+                // Confirm and Execute
+                await executeOperations({postCleanup : operations.postCleanup});
             }
         }
-
-        // Confirm and Execute
-        await executeOperations({postCleanup : operations.postCleanup});
+        doHeader('Done! Bye.');
 
     } catch (error) {
         logger.fail(`An error occurred: ${error.message}`).stop();
