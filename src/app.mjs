@@ -52,7 +52,7 @@ import executeOperations from "./utils/executor.mjs";
         if (config.actions.includes('duplicates')) {
             logger.start('Checking for duplicate files...');
             const duplicates = await getDuplicateItems(scan, config.recycleBinPath);
-            logger.succeed(`Found ${duplicates.directories.length} directory duplicates and ${duplicates.files.length} file duplicates by hash.`);
+            logger.succeed(`Found ${duplicates.directories.length} directory duplicates and ${duplicates.files.length} file duplicates by hash, totaling ${formatBytes(duplicates.size)}.`);
 
             Object.values(duplicates).flat().forEach(dupe => {
                 destructivePaths.add(dupe.path); // Add the file to destructive paths
@@ -83,7 +83,7 @@ import executeOperations from "./utils/executor.mjs";
         if (config.actions.includes('pre-cleanup')) {
             logger.start('Checking for items to pre-clean...');
             const preCleanTheseItems = await getCleanUpItems(scan, config.scanPath, config.recycleBinPath);
-            logger.succeed(`Found ${preCleanTheseItems.directories.length} directories and ${preCleanTheseItems.files.length} files requiring cleaning up before running other actions.`);
+            logger.succeed(`Found ${preCleanTheseItems.directories.length} directories and ${preCleanTheseItems.files.length} files that should be cleaned up first, totaling ${formatBytes(preCleanTheseItems.size)}.`);
 
             [
                 ...Object.values(preCleanTheseItems.files),

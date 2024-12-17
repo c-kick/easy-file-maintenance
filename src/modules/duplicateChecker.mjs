@@ -140,7 +140,7 @@ async function getDuplicateItems(items, binPath) {
     items.files.forEach((file) => {
         if (duplicateDirPaths.has(file.dir)) {
             //file is in a duplicate directory, so can be ignored
-            return
+            return;
         }
         const key = `${file.size}`;
         if (!filesBySize[key]) filesBySize[key] = [];
@@ -188,9 +188,13 @@ async function getDuplicateItems(items, binPath) {
         move_to: rebasePath(binPath, dir.path)
     }));
 
+    // Calculate the total size of duplicate files
+    const totalSize = returnFiles.reduce((sum, file) => sum + file.size, 0);
+
     return ({
         directories: returnDirs,
-        files: returnFiles
+        files: returnFiles,
+        size: totalSize // Include total size of duplicate files
     });
 }
 

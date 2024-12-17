@@ -47,10 +47,16 @@ async function getCleanUpItems(items, scanDir, binPath) {
     return await Promise.all(tasks);
   }
 
+  const returnFiles = (await processItems(items.files)).filter(item => item !== null);
+
+  // Calculate the total size of cleanable files
+  const totalSize = returnFiles.reduce((sum, file) => sum + file.size, 0);
+
   //Directories should be processed first to correctly establish emptiness
   return ({
     directories: (await processItems(items.directories)).filter(item => item !== null),
-    files:       (await processItems(items.files)).filter(item => item !== null)
+    files:       returnFiles,
+    size:        totalSize // Include total size of duplicate files
   });
 }
 
