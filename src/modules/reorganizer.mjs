@@ -91,9 +91,9 @@ export async function extractOldestDate(file, dateThreshold, evalFullPath = true
 
   // Step 2: Check the filename and path for dates
   const datePatterns = [
-    /\b(\d{4})([-\s]?)(\d{2})([-\s]?)(\d{2})\b/g,    // YYYYMMDD or YYYY-MM-DD
-    /\b(\d{2})([-\s]?)(\d{2})([-\s]?)(\d{4})\b/g,    // DDMMYYYY or DD-MM-YYYY
-    /\b(\d{10})\b/g                                  // Epoch timestamp
+    /(\d{4})([-\s]?)(\d{2})([-\s]?)(\d{2})/g,    // YYYYMMDD or YYYY-MM-DD
+    /(\d{2})([-\s]?)(\d{2})([-\s]?)(\d{4})/g,    // DDMMYYYY or DD-MM-YYYY
+    /(\d{10})/g                                  // Epoch timestamp
   ];
 
   const targetString = evalFullPath ? file.path : file.name;
@@ -137,22 +137,25 @@ export async function extractOldestDate(file, dateThreshold, evalFullPath = true
     }
   }
 
-  // Step 3: Check file creation or birth timestamps as a last resort
-  const timestampSources = [
-    { key: 'birthtime', source: 'timestamps (birthtime)' },
-    { key: 'ctime', source: 'timestamps (ctime)' },
-    { key: 'createdTime', source: 'timestamps (createdTime)' },
-    { key: 'modifiedTime', source: 'timestamps (modifiedTime)' }
-  ];
+  if (!dates.length) {
+    // Step 3: Check file creation or birth timestamps as a last resort
+    const timestampSources = [
+      //{ key: 'birthtime', source: 'timestamps (birthtime)' },
+      //{ key: 'ctime', source: 'timestamps (ctime)' },
+      //{ key: 'createdTime', source: 'timestamps (createdTime)' },
+      { key: 'modifiedTime', source: 'timestamps (modifiedTime)' }
+    ];
 
-  timestampSources.forEach(({ key, source }) => {
-    if (file.stats?.[key] || file[key]) {
-      dates.push({
-        date: new Date(file.stats?.[key] || file[key]),
-        source
-      });
-    }
-  });
+    timestampSources.forEach(({ key, source }) => {
+      if (file.stats?.[key] || file[key]) {
+        dates.push({
+          date: new Date(file.stats?.[key] || file[key]),
+          source
+        });
+      }
+    });
+
+  }
 
   // Step 4: Determine the oldest date
   const validDates = dates.filter(entry => entry.date > dateThreshold);

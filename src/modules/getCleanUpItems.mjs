@@ -34,7 +34,7 @@ async function getCleanUpItems(items, scanDir, binPath) {
           return {
             ...item,
             move_to: rebasePath(binPath, item.path),
-            reason:  `${item.consideredEmpty ? `is considered empty (${!item.isEmpty ? 'is not actually empty, but ' : ''}contains empty directories and/or no/ignored files)'}` : item.delete ? 'should be deleted' : 'unknown'}`
+            reason:  `${item.consideredEmpty ? `is considered empty (${!item.isEmpty ? 'is not actually empty, but ' : ''}contains empty directories and/or no/ignored files)` : item.delete ? 'should be deleted' : 'unknown'}`
           };
         }
 
