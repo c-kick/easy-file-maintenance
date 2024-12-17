@@ -88,7 +88,7 @@ async function getOwnershipFiles(items, user, group) {
         });
       }
       progress += 1; // Increment progress after processing
-      logger.text(`Checking permissions... ${progress}/${allEntries.size}`);
+      logger.text(`Checking ownership... ${progress}/${allEntries.size}`);
     } catch (error) {
       console.error(`Failed to process entry ${entry.path}:`, error.message);
     }

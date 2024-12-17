@@ -1,5 +1,5 @@
 import fs from 'fs/promises';
-
+import logger from "../utils/logger.mjs";
 
 /**
  * Parses the permission value to a format suitable for fs.chmod().
@@ -60,25 +60,23 @@ function normalizePermissionAsString(perm) {
 
 /**
  * Ensures file and directory permissions match the specified CHMOD values.
- * @param {object} filesObject - Object containing both 'files' and 'directories' from the scanner.
+ * @param {object} items - Object containing both 'files' and 'directories' from the scanner.
  * @param {string|number} filePerm - Desired file permissions (default: '664').
  * @param {string|number} dirPerm - Desired directory permissions (default: '775').
  * @returns {Promise<object[]>} - Array of objects representing files/directories with incorrect permissions.
  */
-async function getPermissionFiles(filesObject, filePerm = '664', dirPerm = '774') {
+async function getPermissionFiles(items, filePerm = '664', dirPerm = '774') {
     const wrongPerms = [];
 
     // Normalize desired permissions to strings
     const normalizedFilePerm = normalizePermissionAsString(filePerm);
     const normalizedDirPerm = normalizePermissionAsString(dirPerm);
 
-    // Combine files and directories into a single array
-    const allEntries = [
-        ...Object.values(filesObject.files),
-        ...Object.values(filesObject.directories),
-    ];
+    // Combine files and directories into a single Map
+    const allEntries = new Map([...items.files, ...items.directories]);
+    let progress = 0;
 
-    for (const entry of allEntries) {
+    for (const [path, entry] of allEntries) {
         // Determine desired permission based on entry type
         const desiredMode = entry.isFile ? normalizedFilePerm : normalizedDirPerm;
 
@@ -95,6 +93,8 @@ async function getPermissionFiles(filesObject, filePerm = '664', dirPerm = '774'
                 fsChmodValue: parsePermission(desiredMode),
             });
         }
+        progress += 1; // Increment progress after processing
+        logger.text(`Checking permissions... ${progress}/${allEntries.size}`);
     }
 
     return wrongPerms;
