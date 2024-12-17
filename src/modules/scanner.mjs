@@ -91,7 +91,7 @@ function sortAndProcess(results) {
 }
 
 async function scanDirectory(dirPath, config) {
-    const results = { directories: new Map(), files: new Map() };
+    const results = { directories: new Map(), files: new Map(), size: 0 };
     const queue = [{ dirPath, depth: 0 }];
 
     while (queue.length > 0) {
@@ -132,6 +132,7 @@ async function scanDirectory(dirPath, config) {
 
             if (entry.isFile) {
                 results.files.set(itemPath, entry);
+                results.size += entry.size;
             } else if (stats.isDirectory()) {
                 results.directories.set(itemPath, entry);
                 queue.push({ dirPath: itemPath, depth: depth + 1 });

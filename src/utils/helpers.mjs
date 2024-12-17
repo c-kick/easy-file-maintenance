@@ -256,3 +256,30 @@ export function getSideCarFiles(file, filesInThisDir, extensions = ['jpg', 'jpeg
   }
   return sideCarFiles;
 }
+
+/**
+ * Converts a size in bytes to the most human-readable format (e.g., KB, MB, GB, etc.).
+ *
+ * @param {number} bytes - The size in bytes to convert.
+ * @returns {string} A string representing the size in a human-readable format,
+ *                   including the value and the appropriate unit.
+ *
+ * @example
+ * formatBytes(500); // "500 Bytes"
+ * formatBytes(1048576); // "1 MB"
+ * formatBytes(5368709120); // "5 GB"
+ */
+export function formatBytes(bytes) {
+  if (bytes === 0) return '0 Bytes';
+
+  const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB', 'PB', 'EB', 'ZB', 'YB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(1024));
+
+  // Convert bytes to the appropriate size
+  const value = bytes / Math.pow(1024, i);
+
+  // Limit to 2 decimal places if the value is fractional
+  const formattedValue = value % 1 === 0 ? value : value.toFixed(2);
+
+  return `${formattedValue} ${sizes[i]}`;
+}

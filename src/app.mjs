@@ -8,10 +8,9 @@ import getPermissionFiles from './modules/permissionChecker.mjs';
 import getReorganizeItems from "./modules/reorganizer.mjs";
 import getCleanUpItems from "./modules/getCleanUpItems.mjs";
 import getOwnershipFiles from "./modules/ownershipChecker.mjs";
-import {doHeader} from "./utils/helpers.mjs";
+import {doHeader, formatBytes} from "./utils/helpers.mjs";
 import executeOperations from "./utils/executor.mjs";
 
-//todo: rescanning should be considered only if destructive actions have been TAKEN, not if they're evaluated
 
 (async () => {
     logger.start('Loading configuration...');
@@ -34,18 +33,17 @@ import executeOperations from "./utils/executor.mjs";
         logger.succeed(`Start scan for "${config.scanPath}"`);
         logger.start('Scanning directory...');
         let scan = await scanDirectory(config.scanPath, config);
-        let rescan = false;
-        logger.succeed(`Directory scanned. Found ${(scan.files.size + scan.directories.size)} items (${scan.files.size} files, in ${scan.directories.size} directories).`);
+        logger.succeed(`Directory scanned. Found ${(scan.files.size + scan.directories.size)} items (${scan.files.size} files, in ${scan.directories.size} directories), totaling ${formatBytes(scan.size)}`);
 
         // Perform Checks based on `actions`
         const operations = {
-            precleanup: [],
+            preCleanup: [],
             duplicate: [],
             orphan: [],
             permissions: [],
             ownership: [],
             reorganize: [],
-            postcleanup: []
+            postCleanup: []
         };
         const destructivePaths = new Set(); // Tracks paths marked for destructive actions
 
@@ -54,7 +52,7 @@ import executeOperations from "./utils/executor.mjs";
         if (config.actions.includes('duplicates')) {
             logger.start('Checking for duplicate files...');
             const duplicates = await getDuplicateItems(scan, config.recycleBinPath);
-            logger.succeed(`Found a total of ${duplicates.directories.length} directory duplicates and ${duplicates.files.length} file duplicates by hash.`);
+            logger.succeed(`Found ${duplicates.directories.length} directory duplicates and ${duplicates.files.length} file duplicates by hash.`);
 
             Object.values(duplicates).flat().forEach(dupe => {
                 destructivePaths.add(dupe.path); // Add the file to destructive paths
@@ -66,7 +64,6 @@ import executeOperations from "./utils/executor.mjs";
                     move_to: dupe.move_to
                 });
             })
-            rescan = true;
         }
 
         if (config.actions.includes('orphans')) {
@@ -81,7 +78,6 @@ import executeOperations from "./utils/executor.mjs";
                     move_to: item.move_to
                 });
             });
-            rescan = true;
         }
 
         if (config.actions.includes('pre-cleanup')) {
@@ -94,7 +90,7 @@ import executeOperations from "./utils/executor.mjs";
                 ...Object.values(preCleanTheseItems.directories)
             ].forEach(item => {
                 destructivePaths.add(item.path); // Add to destructive paths
-                operations.precleanup.push({
+                operations.preCleanup.push({
                     depth: item.depth,
                     dir: item.dir,
                     path: item.path,
@@ -103,8 +99,6 @@ import executeOperations from "./utils/executor.mjs";
                     reason: item.reason
                 });
             });
-            console.log(operations.precleanup);
-            rescan = true;
         }
 
         //Non-Destructive operations (items can be in multiple of these actions)
@@ -112,7 +106,7 @@ import executeOperations from "./utils/executor.mjs";
         if (config.actions.includes('reorganize')) {
             logger.start('Checking if reorganizing is possible...');
             const reorganizeTheseFiles = await getReorganizeItems(scan, config.reorganizeTemplate, config.dateThreshold, (config.relativePath || config.scanPath));
-            logger.succeed(`Found ${reorganizeTheseFiles.length} items that can be reorganized.`);
+            logger.succeed(`Found ${reorganizeTheseFiles.files.length} items that can be reorganized.`);
             reorganizeTheseFiles.files.forEach(item => {
                 if (!destructivePaths.has(item.path)) { // Skip if path is in destructivePaths
                     operations.reorganize.push({
@@ -122,7 +116,6 @@ import executeOperations from "./utils/executor.mjs";
                     });
                 }
             });
-            rescan = true;
         }
 
         if (config.actions.includes('permissions')) {
@@ -143,7 +136,6 @@ import executeOperations from "./utils/executor.mjs";
             } else {
                 logger.warn('Skipping permission checks due to missing config values (filePerm & dirPerm).')
             }
-            rescan = true;
         }
 
         if (config.actions.includes('ownership')) {
@@ -167,7 +159,6 @@ import executeOperations from "./utils/executor.mjs";
             } else {
                 logger.warn('Skipping ownership checks due to missing config values (owner_user & owner_group).')
             }
-            rescan = true;
         }
 
         // Confirm and Execute
@@ -180,12 +171,10 @@ import executeOperations from "./utils/executor.mjs";
             const postCleanTheseItems = await getCleanUpItems(scan, config.scanPath, config.recycleBinPath);
             logger.succeed(`Found ${postCleanTheseItems.directories.length} directories and ${postCleanTheseItems.files.length} files requiring cleaning up after running all actions.`);
 
-            [
-                ...Object.values(postCleanTheseItems.files),
-                ...Object.values(postCleanTheseItems.directories)
-            ].forEach(item => {
+            const allEntries = new Map([...postCleanTheseItems.files, ...postCleanTheseItems.directories]);
+            allEntries.forEach(item => {
                 destructivePaths.add(item.path); // Add to destructive paths
-                operations.postcleanup.push({
+                operations.postCleanup.push({
                     depth: item.depth,
                     dir: item.dir,
                     path: item.path,
@@ -194,11 +183,11 @@ import executeOperations from "./utils/executor.mjs";
                     reason: item.reason
                 });
             });
-            console.log(operations.postcleanup);
+            console.log(operations.postCleanup);
         }
 
         // Confirm and Execute
-        await executeOperations({postcleanup : operations.postcleanup});
+        await executeOperations({postCleanup : operations.postCleanup});
 
     } catch (error) {
         logger.fail(`An error occurred: ${error.message}`).stop();

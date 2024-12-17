@@ -110,6 +110,7 @@ async function executeOperations(operations) {
                         logger.warn(`Not handling ${item.path} (User cancelled)`);
                         break;
                     } else {
+                        logger.indent();
                         let yesAllItems = (answers[operation] && answers[operation] === 'a') || yesAllActions;
                         if (!yesAllItems) {
                             answers[operation] = await userConfirm(`Handle ${operation} for "${item.path}"?`, ['y', 'a', 'n', 'c']);
