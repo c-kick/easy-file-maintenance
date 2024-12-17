@@ -183,7 +183,7 @@ async function getReorganizeItems(items, targetStructure = '/{year}/{month}/', d
         // Simulate async operation, e.g., reading file contents
         const oldestDate = await extractOldestDate(file, dateThreshold);
 
-        if (!oldestDate.date || file.isDirectory || file.delete || file.ignore) {
+        if (!oldestDate.date || file.isDirectory || file.delete) {
           return null; // Skip files without a valid date, directories, files to be deleted, or ignored files
         }
 

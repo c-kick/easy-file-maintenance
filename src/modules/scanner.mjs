@@ -8,9 +8,9 @@ const stat = promisify(fs.stat);
 
 function matchPattern(str, pattern) {
     const regex = new RegExp(
-      '^' + pattern.replace(/[-/\\^$+?.()|[\]{}]/g, '\\$&').replace(/\*/g, '.*') + '$'
+      '^' + pattern.replace(/[-/\\^$+?.()|[\]{}]/g, '\\$&').replace(/\*/g, '.*').toLowerCase() + '$'
     );
-    return regex.test(str);
+    return regex.test(str.toLowerCase());
 }
 
 function createEntry(itemPath, itemName, stats, depth) {
@@ -112,11 +112,14 @@ async function scanDirectory(dirPath, config) {
             if (!fileStat) continue; // Skip entries with errors
             const { item, itemPath, stats } = fileStat;
             const itemName = path.basename(itemPath);
-            const isIgnoredDir = stats.isDirectory() && (config.ignoreDirectories.some(pattern => matchPattern(item, pattern)) || item.includes(config.recycleBinPath));
-            const isIgnoredFile = stats.isFile() && config.ignoreFiles.some(pattern => matchPattern(item, pattern));
+            const isIgnoredDir = stats.isDirectory() && (config.ignoreDirectories.some(pattern => matchPattern(itemName, pattern)) || itemPath.includes(config.recycleBinPath));
+            const isIgnoredFile = stats.isFile() && config.ignoreFiles.some(pattern => matchPattern(itemPath, pattern));
 
             if (isIgnoredDir) {
                 logger.text(`Ignoring directory: ${itemPath}`);
+                continue;
+            } else if (isIgnoredFile) {
+                logger.text(`Ignoring file: ${itemPath}`);
                 continue;
             } else {
                 logger.text(`Scanning... ${itemPath}`);
@@ -125,7 +128,7 @@ async function scanDirectory(dirPath, config) {
             const entry = createEntry(itemPath, itemName, stats, depth);
 
             // Check for forced ignores
-            entry.ignore = isIgnoredFile;
+            //entry.ignore = isIgnoredFile;
 
             // Check for forced deletes (moves)
             entry.delete = entry.isFile && config.removeFiles.some(pattern => matchPattern(itemName, pattern));

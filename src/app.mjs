@@ -88,10 +88,9 @@ import executeOperations from "./utils/executor.mjs";
             ].forEach(item => {
                 destructivePaths.add(item.path); // Add to destructive paths
                 operations.preCleanup.push({
-                    ...item,
-                    depth: item.depth,
-                    dir: item.dir,
                     path: item.path,
+                    dir: item.dir,
+                    depth: item.depth,
                     size: item.size,
                     move_to: item.move_to,
                     reason: item.reason

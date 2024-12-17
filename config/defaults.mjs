@@ -62,7 +62,7 @@ export default {
     required: true,
   },
   orphanFileExtensions: {
-    default: [".aae", ".xml", ".ini"],
+    default: ["aae", "xml", "ini"],
     type:    "object",
   },
   handleSidecarFiles: {
