@@ -1,7 +1,4 @@
 import logger from '../utils/logger.mjs';
-import { createRequire } from 'module';
-const require = createRequire(import.meta.url);
-
 import path from 'path';
 import { fileURLToPath } from 'url';
 

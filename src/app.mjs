@@ -22,6 +22,11 @@ import executeOperations from "./utils/executor.mjs";
             logger.fail('Configuration invalid, cannot continue.');
             process.exit(1);
         }
+        // Add bin to paths to ignore
+        config.ignoreDirectories = [
+            config.recycleBinPath,
+            ...config.ignoreDirectories
+        ];
         logger.succeed('Configuration loaded.');
         console.log(config);
 
@@ -49,7 +54,7 @@ import executeOperations from "./utils/executor.mjs";
         if (config.actions.includes('duplicates')) {
             logger.start('Checking for duplicate files...');
             const duplicates = await getDuplicateItems(scan, config.recycleBinPath);
-            logger.succeed(`Found a total of ${duplicates.directories.length} directory duplicates and ${duplicates.files.length} file duplicates.`);
+            logger.succeed(`Found a total of ${duplicates.directories.length} directory duplicates and ${duplicates.files.length} file duplicates by hash.`);
 
             Object.values(duplicates).flat().forEach(dupe => {
                 destructivePaths.add(dupe.path); // Add the file to destructive paths

@@ -94,11 +94,6 @@ async function scanDirectory(dirPath, config) {
     const results = { directories: new Map(), files: new Map() };
     const queue = [{ dirPath, depth: 0 }];
 
-    // Paths to ignore
-    const forcedIgnorePaths = [
-        config.recycleBinPath
-    ].map(p => path.resolve(p));
-
     while (queue.length > 0) {
         const { dirPath, depth } = queue.shift();
         const items = await readdir(dirPath);

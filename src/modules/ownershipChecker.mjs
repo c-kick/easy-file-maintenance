@@ -1,4 +1,5 @@
 import fs from 'fs/promises';
+import logger from "../utils/logger.mjs";
 
 /**
  * Resolves user and group names from UID and GID.
@@ -31,23 +32,21 @@ async function resolveUserAndGroup(uid, gid) {
 
 /**
  * Ensures file and directory ownership matches the specified user and group.
- * @param {object} filesObject - Object containing both 'files' and 'directories' from the scanner.
- * @param {string} user - Desired owner user name (e.g., 'admin').
+ * @param {object} items - Object containing both 'files' and 'directories' from the scanner.
+ * @param {string} user - Desired owner username (e.g., 'admin').
  * @param {string} group - Desired owner group name (e.g., 'users').
  * @returns {Promise<object[]>} - Array of objects representing files/directories with incorrect ownership.
  */
-async function getOwnershipFiles(filesObject, user, group) {
+async function getOwnershipFiles(items, user, group) {
   if (!user || !group) {
     throw new Error('Both user and group must be specified.');
   }
 
   const wrongOwnership = [];
 
-  // Combine files and directories into a single array
-  const allEntries = [
-    ...Object.values(filesObject.files),
-    ...Object.values(filesObject.directories),
-  ];
+  // Combine files and directories into a single Map
+  const allEntries = new Map([...items.files, ...items.directories]);
+  let progress = 0;
 
   // Resolve the expected user and group IDs
   const systemUser = (await fs.readFile('/etc/passwd'))
@@ -65,7 +64,7 @@ async function getOwnershipFiles(filesObject, user, group) {
     throw new Error(`User "${user}" or group "${group}" not found.`);
   }
 
-  for (const entry of allEntries) {
+  for (const [path, entry] of allEntries) {
     try {
       const stats = entry.stats ?? await fs.stat(entry.path);
       const uid = stats.uid;
@@ -88,6 +87,8 @@ async function getOwnershipFiles(filesObject, user, group) {
           expectedGid:   parseInt(systemGroup, 10),
         });
       }
+      progress += 1; // Increment progress after processing
+      logger.text(`Checking permissions... ${progress}/${allEntries.size}`);
     } catch (error) {
       console.error(`Failed to process entry ${entry.path}:`, error.message);
     }

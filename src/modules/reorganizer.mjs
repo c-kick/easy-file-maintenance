@@ -3,6 +3,7 @@ import fs from 'fs/promises';
 import path from 'path';
 import exifParser from 'exif-parser';
 import pLimit from "p-limit";
+import {normalizePath} from "../utils/helpers.mjs";
 
 const FILE_LIMIT = pLimit(2); // Limit concurrency
 const SUPPORTED_EXIF_EXTENSIONS = new Set([
@@ -195,7 +196,7 @@ async function getReorganizeItems(items, targetStructure = '/{year}/{month}/', d
         .replace('{month}', month)
         .replace('{day}', day));
 
-        const pathRef = path.basename(path.normalize(file.dir).replace(/\/$/, ''));
+        const pathRef = normalizePath(file.dir);
         const targetName = file.name.includes(pathRef)
           ? file.name
           : appendToFilename(file.name, ` - ${pathRef}`);

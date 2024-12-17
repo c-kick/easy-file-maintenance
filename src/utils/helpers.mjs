@@ -139,34 +139,120 @@ export async function hashFileChunk(filePath, chunkSize = 131072) {
 }
 
 /**
- * Generates an MD5 hash for a given string.
- * @param {string} string - The input string to hash.
- * @returns {string} - The MD5 hash of the input string.
+ * Recursively calculates an MD5 hash for a directory and its contents.
+ *
+ * The function computes the hash by combining:
+ * - Hashes of all files directly within the directory.
+ * - Hashes of all subdirectories (recursively processed).
+ *
+ * @param {Object} dirEntry - The directory entry object containing information about the directory.
+ * @param {Object} results - An object containing two Maps:
+ *        @param {Map<string, Object>} results.files - A Map of file paths to file entry objects.
+ *        @param {Map<string, Object>} results.directories - A Map of directory paths to directory entry objects.
+ * @returns {Promise<string>} - A promise that resolves to the final MD5 hash of the directory.
+ *
+ * @example
+ * const dirEntry = { path: '/photos/2023' };
+ * const results = {
+ *     files: new Map([
+ *         ['/photos/2023/file1.jpg', { path: '/photos/2023/file1.jpg', dir: '/photos/2023' }],
+ *         ['/photos/2023/file2.jpg', { path: '/photos/2023/file2.jpg', dir: '/photos/2023' }]
+ *     ]),
+ *     directories: new Map([
+ *         ['/photos/2023/subdir', { path: '/photos/2023/subdir', dir: '/photos/2023' }]
+ *     ])
+ * };
+ *
+ * const hash = await calculateDirectoryHash(dirEntry, results);
+ * console.log(hash); // Outputs a unique MD5 hash for the directory and its contents
  */
-export function hashString(string) {
-  return crypto.createHash('md5').update(string).digest('hex').toString();
+export async function calculateDirectoryHash(dirEntry, results) {
+  const hash = crypto.createHash('md5');
+  const childFiles = Array.from(results.files.values()).filter((file) => file.dir === dirEntry.path);
+  const childDirs = Array.from(results.directories.values()).filter((subDir) => subDir.dir === dirEntry.path);
+
+  for (const file of childFiles) {
+    hash.update(await hashFileChunk(file.path));
+  }
+  for (const subDir of childDirs) {
+    hash.update(await calculateDirectoryHash(subDir, results));
+  }
+  return hash.digest('hex');
 }
 
 /**
- * Executes an array of asynchronous tasks with a concurrency limit.
+ * Filters an object of grouped items to include only groups with multiple entries.
  *
- * @param {import('p-limit').Limit} limit - A concurrency limit instance from the `p-limit` library.
- * @param {Array<() => Promise<any>>} tasks - An array of asynchronous tasks, where each task is a function that returns a Promise.
- * @returns {Promise<Array<any>>} - A Promise that resolves to an array of results from the tasks, maintaining the order of the input tasks.
+ * The function iterates over the keys of the input object and retains only those
+ * groups (arrays) that contain more than one entry.
+ *
+ * @template T
+ * @param {Object<string, T[]>} groupedItems - An object where keys are group identifiers
+ *        and values are arrays of items.
+ * @returns {Object<string, T[]>} - A new object containing only the groups with more than one entry.
  *
  * @example
- * import pLimit from 'p-limit';
- *
- * const limit = pLimit(5); // Allow up to 5 concurrent tasks
- * const tasks = [
- *   async () => await fetchData(1),
- *   async () => await fetchData(2),
- *   async () => await fetchData(3),
- * ];
- *
- * const results = await withConcurrency(limit, tasks);
- * console.log(results);
+ * const groupedItems = {
+ *     group1: [1, 2],
+ *     group2: [3],
+ *     group3: [4, 5, 6]
+ * };
+ * const result = filterGroupsWithMultipleEntries(groupedItems);
+ * console.log(result);
+ * // Output:
+ * // {
+ * //   group1: [1, 2],
+ * //   group3: [4, 5, 6]
+ * // }
  */
-export async function withConcurrency(limit, tasks) {
-  return Promise.all(tasks.map(task => limit(() => task())));
+export function filterGroupsWithMultipleEntries(groupedItems) {
+  return Object.keys(groupedItems).reduce((filtered, key) => {
+    if (groupedItems[key].length > 1) {
+      filtered[key] = groupedItems[key];
+    }
+    return filtered;
+  }, {});
+}
+
+/**
+ * Identifies and retrieves sidecar files related to a given file based on naming patterns and size.
+ *
+ * A sidecar file is typically smaller than the main file and shares the same base name
+ * (e.g., metadata or accompanying files for media content).
+ *
+ * @param {Object} file - The main file to find sidecar files for.
+ * @param {Object<string, Object[]>} filesInThisDir - An object containing arrays of files grouped by directory paths.
+ * @param {string[]} [extensions=['jpg', 'jpeg', 'mp4', 'avi']] - An optional list of file extensions that the main file must have
+ *        to be considered for sidecar detection.
+ * @returns {Object[]} - An array of sidecar files related to the main file.
+ *
+ * @example
+ * const file = {
+ *     baseName: 'example',
+ *     extension: 'jpg',
+ *     size: 2048,
+ *     dir: '/photos'
+ * };
+ * const filesInThisDir = {
+ *     '/photos': [
+ *         { baseName: 'example', extension: 'jpg', size: 2048, dir: '/photos' },
+ *         { baseName: 'example', extension: 'xml', size: 512, dir: '/photos' },
+ *         { baseName: 'example_01', extension: 'jpg', size: 1024, dir: '/photos' }
+ *     ]
+ * };
+ * const sidecars = getSideCarFiles(file, filesInThisDir);
+ * console.log(sidecars); // Outputs: [{ baseName: 'example', extension: 'xml', size: 512, dir: '/photos' }]
+ */
+export function getSideCarFiles(file, filesInThisDir, extensions = ['jpg', 'jpeg', 'mp4', 'avi']) {
+  const basePattern = new RegExp(`^${file.baseName}(?![a-zA-Z0-9 \-])`);
+  const sideCarFiles = [];
+  if (extensions.includes(file.extension)) {
+    for (const otherFile of filesInThisDir[file.dir].filter(otherFile => otherFile !== file)) {
+      if (basePattern.test(otherFile.baseName) && file.size > otherFile.size) {
+        sideCarFiles.push(otherFile);
+      }
+    }
+
+  }
+  return sideCarFiles;
 }

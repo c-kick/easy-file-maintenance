@@ -1,4 +1,10 @@
-import {hashFileChunk, rebasePath} from "../utils/helpers.mjs";
+import {
+    calculateDirectoryHash,
+    filterGroupsWithMultipleEntries,
+    getSideCarFiles,
+    hashFileChunk,
+    rebasePath
+} from "../utils/helpers.mjs";
 import logger from "../utils/logger.mjs";
 import crypto from "crypto";
 
@@ -55,43 +61,6 @@ async function determineOriginal(files) {
     }, files[0]);
 }
 
-function getSideCarFiles(file, filesInThisDir, extensions = ['jpg', 'jpeg', 'mp4', 'avi']) {
-    const basePattern = new RegExp(`^${file.baseName}(?![a-zA-Z0-9 \-])`);
-    const sideCarFiles = [];
-    if (extensions.includes(file.extension)) {
-        for (const otherFile of filesInThisDir[file.dir].filter(otherFile => otherFile !== file)) {
-            if (basePattern.test(otherFile.baseName) && file.size > otherFile.size) {
-                sideCarFiles.push(otherFile);
-            }
-        }
-
-    }
-    return sideCarFiles;
-}
-
-function filterGroupsWithMultipleEntries(groupedItems) {
-    return Object.keys(groupedItems).reduce((filtered, key) => {
-        if (groupedItems[key].length > 1) {
-            filtered[key] = groupedItems[key];
-        }
-        return filtered;
-    }, {});
-}
-
-async function calculateDirectoryHash(dirEntry, results) {
-    const hash = crypto.createHash('md5');
-    const childFiles = Array.from(results.files.values()).filter((file) => file.dir === dirEntry.path);
-    const childDirs = Array.from(results.directories.values()).filter((subDir) => subDir.dir === dirEntry.path);
-
-    for (const file of childFiles) {
-        hash.update(await hashFileChunk(file.path));
-    }
-    for (const subDir of childDirs) {
-        hash.update(await calculateDirectoryHash(subDir, results));
-    }
-    return hash.digest('hex');
-}
-
 /**
  * Processes grouped items to identify duplicates by calculating hashes and filtering based on unique hashes.
  *
@@ -106,15 +75,17 @@ async function calculateDirectoryHash(dirEntry, results) {
  */
 async function processGroupedItems(groupedItems, hashFunction, determineOriginal, processExtras = () => ({})) {
     const duplicates = {};
+    const groups = Object.entries(groupedItems);
+    let progress = 0;
 
-    for (const [key, items] of Object.entries(filterGroupsWithMultipleEntries(groupedItems))) {
+    for (const [key, items] of groups) {
         if (items.length > 1) {
             const originalItem = await determineOriginal(items);
 
             // Hash each item and log the operation
             const hashes = await Promise.all(
               items.map(async item => {
-                  logger.text(`Hashing ${item.isFile ? 'file' : 'directory'} ${item.path}...`);
+                  logger.text(`Hashing ${item.isFile ? 'file' : 'directory'} ${progress}/${groups.length}...`);
                   return await hashFunction(item);
               })
             );
@@ -133,6 +104,8 @@ async function processGroupedItems(groupedItems, hashFunction, determineOriginal
                 duplicate_of: originalItem.path,
                 ...processExtras(item, idx) // Add extra properties if needed
             }));
+
+            progress += 1; // Increment progress after processing
         }
     }
 
@@ -142,7 +115,6 @@ async function processGroupedItems(groupedItems, hashFunction, determineOriginal
 
 async function getDuplicateItems(items, binPath) {
 
-
     //first handle directories
     const groupedDirs = {};
     items.directories.forEach((dir) => {
@@ -150,9 +122,10 @@ async function getDuplicateItems(items, binPath) {
         if (!groupedDirs[key]) groupedDirs[key] = [];
         if (dir.size > 0) groupedDirs[key].push(dir);
     });
+    const filteredGroupedDirs = filterGroupsWithMultipleEntries(groupedDirs);
 
     const duplicateDirs = await processGroupedItems(
-      groupedDirs,
+      filteredGroupedDirs,
       dir => calculateDirectoryHash(dir, items),
       determineOriginal,
     );
@@ -161,7 +134,6 @@ async function getDuplicateItems(items, binPath) {
     const duplicateDirPaths = new Set(
       Object.values(duplicateDirs).flat().map(dir => dir.path)
     );
-
 
     //now handle files
     const filesBySize = {};
@@ -174,6 +146,7 @@ async function getDuplicateItems(items, binPath) {
         if (!filesBySize[key]) filesBySize[key] = [];
         filesBySize[key].push(file);
     });
+    const filteredFilesBySize = filterGroupsWithMultipleEntries(filesBySize);
 
     const filesByDir = {};
     items.files.forEach((file) => {
@@ -183,7 +156,7 @@ async function getDuplicateItems(items, binPath) {
     }, {});
 
     const duplicateFiles = await processGroupedItems(
-      filesBySize,
+      filteredFilesBySize,
       file => hashFileChunk(file.path),
       determineOriginal,
       (file, idx) => ({
