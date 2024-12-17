@@ -112,7 +112,7 @@ async function scanDirectory(dirPath, config) {
             if (!fileStat) continue; // Skip entries with errors
             const { item, itemPath, stats } = fileStat;
             const itemName = path.basename(itemPath);
-            const isIgnoredDir = stats.isDirectory() && config.ignoreDirectories.some(pattern => matchPattern(item, pattern));
+            const isIgnoredDir = stats.isDirectory() && (config.ignoreDirectories.some(pattern => matchPattern(item, pattern)) || item.includes(config.recycleBinPath));
             const isIgnoredFile = stats.isFile() && config.ignoreFiles.some(pattern => matchPattern(item, pattern));
 
             if (isIgnoredDir) {

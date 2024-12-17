@@ -21,11 +21,6 @@ import executeOperations from "./utils/executor.mjs";
             logger.fail('Configuration invalid, cannot continue.');
             process.exit(1);
         }
-        // Add bin to paths to ignore
-        config.ignoreDirectories = [
-            config.recycleBinPath,
-            ...config.ignoreDirectories
-        ];
         logger.succeed('Configuration loaded.');
         console.log(config);
 
