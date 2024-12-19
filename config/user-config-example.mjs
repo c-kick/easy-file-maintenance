@@ -1,5 +1,4 @@
 export default {
-  debugLevel:     "info",
   scanPath:       "/path/to/scan",
   recycleBinPath: "/path/to/#recycle",
   actions:        [

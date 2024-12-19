@@ -1,7 +1,7 @@
 import {rebasePath} from "../utils/helpers.mjs";
-import pLimit from "p-limit";
 import logger from "../utils/logger.mjs";
 
+import pLimit from "p-limit";
 const FILE_LIMIT = pLimit(5); // Limit concurrency
 
 /**
@@ -28,13 +28,13 @@ async function getCleanUpItems(items, scanDir, binPath) {
         progress += 1; // Increment progress after processing
         logger.text(`Scanning for items to clean up... ${progress}/${items.size}`);
 
-        if (item.consideredEmpty || item.delete) {
+        if (item.totalSize === 0 || item.delete) {
           // Add the current item's path to the removal set
           removalPaths.add(item.path);
           return {
             ...item,
             move_to: rebasePath(binPath, item.path),
-            reason:  `${item.consideredEmpty ? `is considered empty (${!item.isEmpty ? 'is not actually empty, but ' : ''}contains empty directories and/or no/ignored files)` : item.delete ? 'should be deleted' : 'unknown'}`
+            reason:  `${item.totalSize === 0 ? `is considered empty (${!item.isEmpty ? 'is not actually empty, but ' : ''}contains empty directories and/or no/ignored files)` : item.delete ? 'should be deleted' : 'unknown'}`
           };
         }
 

@@ -1,28 +1,30 @@
 import fs from 'fs/promises';
 import logger from "../utils/logger.mjs";
+import {promisify} from "util";
+const stat = promisify(fs.stat);
 
 /**
  * Resolves user and group names from UID and GID.
  * @param {number} uid - User ID.
  * @param {number} gid - Group ID.
+ * @param {string} passwdFile - Content of /etc/passwd.
+ * @param {string} groupFile - Content of /etc/group.
  * @returns {Promise<{user: string, group: string}>} - Object containing the resolved user and group names.
  */
-async function resolveUserAndGroup(uid, gid) {
+async function resolveUserAndGroup(uid, gid, passwdFile, groupFile) {
   let user = null;
   let group = null;
 
   try {
-    const passwdFile = (await fs.readFile('/etc/passwd')).toString();
     user = passwdFile
     .split('\n')
     .find(line => line.split(':')[2] === uid.toString())
-    ?.split(':')[0];
+    ?.split(':')[0] ?? null;
 
-    const groupFile = (await fs.readFile('/etc/group')).toString();
     group = groupFile
     .split('\n')
     .find(line => line.split(':')[2] === gid.toString())
-    ?.split(':')[0];
+    ?.split(':')[0] ?? null;
   } catch (error) {
     console.error('Error resolving user or group:', error.message);
   }
@@ -47,52 +49,63 @@ async function getOwnershipFiles(items, user, group) {
   // Combine files and directories into a single Map
   const allEntries = new Map([...items.files, ...items.directories]);
   let progress = 0;
+  logger.text(`Checking ownership... ${progress}/${allEntries.size}`);
+
+  // Read /etc/passwd and /etc/group once
+  let passwdFile, groupFile;
+  try {
+    passwdFile = (await fs.readFile('/etc/passwd')).toString();
+    groupFile = (await fs.readFile('/etc/group')).toString();
+  } catch (error) {
+    throw new Error(`Failed to read system files: ${error.message}`);
+  }
 
   // Resolve the expected user and group IDs
-  const systemUser = (await fs.readFile('/etc/passwd'))
-  .toString()
-  .split('\n')
-  .find(line => line.startsWith(`${user}:`))
-  ?.split(':')[2];
-  const systemGroup = (await fs.readFile('/etc/group'))
-  .toString()
-  .split('\n')
-  .find(line => line.startsWith(`${group}:`))
-  ?.split(':')[2];
+  const systemUser = passwdFile.split('\n').find(line => line.startsWith(`${user}:`))?.split(':')[2];
+  const systemGroup = groupFile.split('\n').find(line => line.startsWith(`${group}:`))?.split(':')[2];
 
   if (!systemUser || !systemGroup) {
     throw new Error(`User "${user}" or group "${group}" not found.`);
   }
 
+  const ownershipPromises = [];
+
   for (const [path, entry] of allEntries) {
-    try {
-      const stats = entry.stats ?? await fs.stat(entry.path);
-      const uid = stats.uid;
-      const gid = stats.gid;
+    ownershipPromises.push((async () => {
+      try {
+        if (!entry.stats) {
+          console.warn(`Stats not available for "${path}".`);
+          return;
+        }
+        const uid = entry.stats.uid;
+        const gid = entry.stats.gid;
 
-      // Resolve current user and group names
-      const {user: currentUser, group: currentGroup} = await resolveUserAndGroup(uid, gid);
+        // Resolve current user and group names
+        const { user: currentUser, group: currentGroup } = await resolveUserAndGroup(uid, gid, passwdFile, groupFile);
 
-      // Compare UID and GID
-      if (uid.toString() !== systemUser || gid.toString() !== systemGroup) {
-        wrongOwnership.push({
-          ...entry,
-          currentUid:    uid,
-          currentGid:    gid,
-          currentUser,
-          currentGroup,
-          expectedUser:  user,
-          expectedGroup: group,
-          expectedUid:   parseInt(systemUser, 10),
-          expectedGid:   parseInt(systemGroup, 10),
-        });
+        // Compare UID and GID
+        if (uid.toString() !== systemUser || gid.toString() !== systemGroup) {
+          wrongOwnership.push({
+            ...entry,
+            currentUid: uid,
+            currentGid: gid,
+            currentUser,
+            currentGroup,
+            expectedUser: user,
+            expectedGroup: group,
+            expectedUid: parseInt(systemUser, 10),
+            expectedGid: parseInt(systemGroup, 10),
+          });
+        }
+      } catch (error) {
+        console.error(`Failed to process entry ${entry.path}:`, error.message);
       }
       progress += 1; // Increment progress after processing
       logger.text(`Checking ownership... ${progress}/${allEntries.size}`);
-    } catch (error) {
-      console.error(`Failed to process entry ${entry.path}:`, error.message);
-    }
+    })());
   }
+
+  await Promise.all(ownershipPromises);
 
   return wrongOwnership;
 }

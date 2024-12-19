@@ -96,8 +96,9 @@ export function rebasePath(basePath, targetPath) {
  * If the message is not provided, it will output a dashed line of the specified length.
  * @param {string} [message=''] - The message to display (optional).
  * @param {number} [characters=50] - The total length of the output, including the message and padding.
+ * @param echo
  */
-export function doHeader(message = '', characters = 50) {
+export function doHeader(message = '', characters = 50, echo = true) {
   // Wrap message in spaces if provided
   const wrappedMessage = message ? ` ${message} ` : '';
 
@@ -117,7 +118,7 @@ export function doHeader(message = '', characters = 50) {
     : '-'.repeat(characters);
 
   // Output the header to the console
-  console.log(header);
+  if (echo) { console.log(header) } else { return header }
 }
 
 

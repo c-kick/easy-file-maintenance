@@ -4,6 +4,7 @@ import fs from 'fs/promises';
 import fsExtra from 'fs-extra';
 import path from 'path';
 import configLoader from "../modules/configLoader.mjs";
+import chalk from 'chalk';
 
 const config = configLoader;
 
@@ -60,7 +61,7 @@ async function doOperation(item) {
  * @param {object[{}]} operations - List of operations to perform.
  * @returns {Promise<void>}
  */
-async function executeOperations(operations) {
+async function executeOperationsOLD(operations) {
     logger.succeed('Executing pending operations...');
     const answers = {};
     let yesAllActions = false;
@@ -133,6 +134,78 @@ async function executeOperations(operations) {
 
     doHeader();
     logger.succeed(`All actions done. ${sizeAffected} bytes saved.`);
+}
+
+
+async function executeOperations(operations) {
+    logger.succeed('Executing pending operations...');
+    const answers = {};
+    let yesAllActions = false;
+    let sizeAffected = 0;
+
+    for (const operation in operations) {
+        if (!operations.hasOwnProperty(operation) || !operations[operation].length) continue;
+
+        doHeader(operation);
+        let proceed = yesAllActions || await getProceedAnswer(operation, operations, answers);
+        if (!proceed) continue;
+
+        for (const item of operations[operation]) {
+            if (answers[operation] === 'c') {
+                logger.warn(`Not handling ${item.path} (User cancelled)`);
+                break;
+            }
+
+            logger.indent();
+            let yesAllItems = answers[operation] === 'a' || yesAllActions;
+            if (!yesAllItems) {
+                answers[operation] = await userConfirm(
+                  `${chalk.blue('Operation:')} ${operation}\n${chalk.green('File:')} "${item.path}"\nHandle this file?`,
+                  ['y', 'a', 'n', 'c']
+                );
+            }
+
+            if (['y', 'a'].includes(answers[operation]) || yesAllItems) {
+                const result = await doOperation(item);
+                if (result.success) sizeAffected += result.size ?? 0;
+            } else if (['n', 'c'].includes(answers[operation])) {
+                logger.warn(`Not handling "${item.path}" (${answers[operation]})`);
+            }
+        }
+        logger.succeed(`All ${operation} actions done`);
+    }
+
+    doHeader();
+    logger.succeed(`All actions done. ${sizeAffected} bytes saved.`);
+}
+
+async function getProceedAnswer(operation, operations, answers) {
+    if (answers[operation] === 'c') {
+        logger.fail(`Stop ${operation} actions`);
+        return false;
+    }
+
+    const answer = await answerLoop(
+      `${chalk.blue('Operation:')} ${operation}\n${chalk.green('Items:')} ${operations[operation].length}\nStart handling these items?`,
+      ['y', 'n', 'c', 's'],
+      {
+          'y': async () => true,
+          'n': async () => {
+              logger.warn(`Skipping ${operation} actions`);
+              return true;
+          },
+          'c': async () => {
+              logger.fail(`Cancelled all remaining actions`);
+              return true;
+          },
+          's': async () => {
+              console.log(operations[operation]);
+              return false;
+          }
+      }
+    );
+
+    return answer === 'y';
 }
 
 export default executeOperations;

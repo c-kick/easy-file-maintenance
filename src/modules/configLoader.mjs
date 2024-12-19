@@ -19,7 +19,14 @@ try {
 } catch (e) {
     console.error("No user-config.mjs file found, or file invalid!");
     process.exit(1);
+} finally {
+    // Ensure userConfig is an array
+    if (!Array.isArray(userConfig)) {
+        console.error("user-config.mjs must export an array of configuration objects!");
+        process.exit(1);
+    }
 }
+
 
 try {
     defaultConfig = (await import(defaultConfigPath)).default;
@@ -75,11 +82,16 @@ const validateAndMergeConfigs = (defaults, user) => {
             merged[key] = userValue;
         }
     }
-    logger.succeed('Validated configuration.');
 
     return merged;
 };
+// Iterate and validate each configuration entry
+let handledCount = 0;
+const mergedConfigs = userConfig.map(userConfigEntry => {
+    const validatedConfig = validateAndMergeConfigs(defaultConfig, userConfigEntry);
+    handledCount++;
+    logger.succeed(`Validated configuration (${handledCount}/${userConfig.length}).`);
+    return validatedConfig;
+});
 
-const mergedConfig = validateAndMergeConfigs(defaultConfig, userConfig);
-
-export default mergedConfig;
+export default mergedConfigs;
