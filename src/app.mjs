@@ -62,9 +62,10 @@ import executeOperations from './utils/executor.mjs';
 
       if (config.actions.includes('orphans')) {
         logger.start('Checking for orphan files...');
-        const orphans = await getOrphanItems(scan.files, config.orphanFileExtensions, config.recycleBinPath);
-        logger.succeed(`Found ${orphans.length} orphaned files.`);
-        orphans.forEach(item => {
+        const orphans = await getOrphanItems(scan, config.orphanFileExtensions, config.recycleBinPath);
+        logger.succeed(`Found ${orphans.files.length} orphaned files.`);
+
+        orphans.files.forEach(item => {
           destructivePaths.add(item.path); // Add to destructive paths
           operations.orphan.push({
             ...item,
