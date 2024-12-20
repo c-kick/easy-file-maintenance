@@ -24,10 +24,8 @@ import executeOperations from './utils/executor.mjs';
     console.log(configs);
 
     for (const config of configs) {
-      logger.succeed(`Start scan for "${config.scanPath}"`);
-      logger.start('Scanning directory...');
+      doHeader(`Starting scan in path: ${config.scanPath}`);
       let scan = await scanDirectory(config.scanPath, config);
-      logger.succeed(`Directory scanned. Found ${(scan.files.size + scan.directories.size)} items (${scan.files.size} files, in ${scan.directories.size} directories), totaling ${formatBytes(scan.size)}`);
 
       // Perform Checks based on `actions`
       const operations = {
@@ -53,7 +51,7 @@ import executeOperations from './utils/executor.mjs';
             destructivePaths.add(dupe.path); // Add the file to destructive paths
             operations.duplicate.push({
               path:         dupe.path,
-              size:         dupe.size,
+              size:         dupe.stats.size,
               original:     dupe.duplicate_of,
               sidecarFiles: dupe.sidecars ?? [],
               move_to:      dupe.move_to
@@ -70,7 +68,7 @@ import executeOperations from './utils/executor.mjs';
           destructivePaths.add(item.path); // Add to destructive paths
           operations.orphan.push({
             path:    item.path,
-            size:    item.size,
+            size:    item.stats.size,
             move_to: item.move_to
           });
         });
@@ -78,7 +76,7 @@ import executeOperations from './utils/executor.mjs';
 
       if (config.actions.includes('pre-cleanup')) {
         logger.start('Checking for items to pre-clean...');
-        const preCleanTheseItems = await getCleanUpItems(scan, config.scanPath, config.recycleBinPath);
+        const preCleanTheseItems = await getCleanUpItems(scan, config.scanPath, config.recycleBinPath, config.emptyThreshold);
         logger.succeed(`Found ${preCleanTheseItems.directories.length} directories and ${preCleanTheseItems.files.length} files that should be cleaned up first, totaling ${formatBytes(preCleanTheseItems.size)}.`);
 
         [
@@ -89,8 +87,10 @@ import executeOperations from './utils/executor.mjs';
           operations.preCleanup.push({
             path:    item.path,
             dir:     item.dir,
-            depth:   item.depth,
-            size:    item.size,
+            size:    item.stats.size,
+            totalSize: item.totalSize ?? 'n/a',
+            fileCount: item.fileCount ?? 'n/a',
+            dirCount: item.dirCount ?? 'n/a',
             move_to: item.move_to,
             reason:  item.reason
           });
@@ -170,7 +170,7 @@ import executeOperations from './utils/executor.mjs';
           doHeader('post-cleanup');
           logger.start('Checking for items to post-clean...');
           scan = await scanDirectory(config.scanPath, config);
-          const postCleanTheseItems = await getCleanUpItems(scan, config.scanPath, config.recycleBinPath);
+          const postCleanTheseItems = await getCleanUpItems(scan, config.scanPath, config.recycleBinPath,  config.emptyThreshold);
           logger.succeed(`Found ${postCleanTheseItems.directories.length} directories and ${postCleanTheseItems.files.length} files requiring cleaning up after running all actions, totaling ${formatBytes(postCleanTheseItems.size)}.`);
 
           [
@@ -182,7 +182,7 @@ import executeOperations from './utils/executor.mjs';
               depth:   item.depth,
               dir:     item.dir,
               path:    item.path,
-              size:    item.size,
+              size:    item.stats.size,
               move_to: item.move_to,
               reason:  item.reason
             });

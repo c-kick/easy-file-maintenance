@@ -1,7 +1,8 @@
-import {rebasePath} from "../utils/helpers.mjs";
+import {formatBytes, rebasePath} from "../utils/helpers.mjs";
 import logger from "../utils/logger.mjs";
 
 import pLimit from "p-limit";
+
 const FILE_LIMIT = pLimit(5); // Limit concurrency
 
 /**
@@ -9,8 +10,9 @@ const FILE_LIMIT = pLimit(5); // Limit concurrency
  * @param {object} items - Object containing both 'files' and 'directories' from the scanner.
  * @param {string} scanDir - The root directory being scanned.
  * @param {string} binPath - The path to the recycle bin.
+ * @param {number} emptyThreshold - The threshold, in bytes, for considering a directory empty.
  */
-async function getCleanUpItems(items, scanDir, binPath) {
+async function getCleanUpItems(items, scanDir, binPath, emptyThreshold  = 0) {
   // Initialize a set to keep track of parent paths
   const removalPaths = new Set();
   let progress = 0;
@@ -28,13 +30,29 @@ async function getCleanUpItems(items, scanDir, binPath) {
         progress += 1; // Increment progress after processing
         logger.text(`Scanning for items to clean up... ${progress}/${items.size}`);
 
-        if (item.totalSize === 0 || item.delete) {
+        const empty = item.isDirectory && item.totalSize <= emptyThreshold;
+        const reallyEmpty = item.isDirectory && item.fileCount === 0 && empty;
+
+        let reason = 'n/a';
+        if (item.isDirectory) {
+          if (!item.totalSize && reallyEmpty) {
+            reason = 'is empty (contains nothing)';
+          } else if (item.totalSize > 0 && item.totalSize <= emptyThreshold) {
+            reason = `size (${formatBytes(item.totalSize)}) is below threshold (${formatBytes(emptyThreshold)})`;
+          } else if (empty && !reallyEmpty) {
+            reason = `is considered empty (but still contains ${item.fileCount} ignored and/or zero-byte files, and ${item.dirCount} empty directories)`;
+          }
+        } else if (item.delete) {
+          reason = 'is marked for deletion';
+        }
+
+        if (empty || item.delete) {
           // Add the current item's path to the removal set
           removalPaths.add(item.path);
           return {
             ...item,
             move_to: rebasePath(binPath, item.path),
-            reason:  `${item.totalSize === 0 ? `is considered empty (${!item.isEmpty ? 'is not actually empty, but ' : ''}contains empty directories and/or no/ignored files)` : item.delete ? 'should be deleted' : 'unknown'}`
+            reason:  reason
           };
         }
 
@@ -50,9 +68,9 @@ async function getCleanUpItems(items, scanDir, binPath) {
   const returnFiles = (await processItems(items.files)).filter(item => item !== null);
 
   // Calculate the total size of cleanable files
-  const totalSize = returnFiles.reduce((sum, file) => sum + file.size, 0);
+  const totalSize = returnFiles.reduce((sum, file) => sum + file.stats.size, 0);
 
-  //Directories should be processed first to correctly establish emptiness
+  //Directories should be processed first to correctly establish cascading emptiness
   return ({
     directories: (await processItems(items.directories)).filter(item => item !== null),
     files:       returnFiles,

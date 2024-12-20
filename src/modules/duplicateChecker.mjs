@@ -6,7 +6,6 @@ import {
     rebasePath
 } from "../utils/helpers.mjs";
 import logger from "../utils/logger.mjs";
-import crypto from "crypto";
 
 /**
  * Determines the "original" file from a list of duplicate files.
@@ -118,7 +117,7 @@ async function getDuplicateItems(items, binPath) {
     //first handle directories
     const groupedDirs = {};
     items.directories.forEach((dir) => {
-        const key = [dir.intrinsicSize, dir.size, dir.fileCount, dir.stats.nlink, dir.stats.size].join('_');
+        const key = [dir.intrinsicSize, dir.totalSize, dir.fileCount, dir.stats.nlink, dir.stats.size].join('_');
         if (!groupedDirs[key]) groupedDirs[key] = [];
         if (dir.size > 0) groupedDirs[key].push(dir);
     });
@@ -142,7 +141,7 @@ async function getDuplicateItems(items, binPath) {
             //file is in a duplicate directory, so can be ignored
             return;
         }
-        const key = `${file.size}`;
+        const key = `${file.stats.size}`;
         if (!filesBySize[key]) filesBySize[key] = [];
         filesBySize[key].push(file);
     });
@@ -159,7 +158,7 @@ async function getDuplicateItems(items, binPath) {
       filteredFilesBySize,
       file => hashFileChunk(file.path),
       determineOriginal,
-      (file, idx) => ({
+      (file) => ({
           sidecars: getSideCarFiles(file, filesByDir).map(sidecarFile => ({
               ...sidecarFile,
               move_to: rebasePath(binPath, sidecarFile.path)
@@ -189,7 +188,7 @@ async function getDuplicateItems(items, binPath) {
     }));
 
     // Calculate the total size of duplicate files
-    const totalSize = returnFiles.reduce((sum, file) => sum + file.size, 0);
+    const totalSize = returnFiles.reduce((sum, file) => sum + file.stats.size, 0);
 
     return ({
         directories: returnDirs,

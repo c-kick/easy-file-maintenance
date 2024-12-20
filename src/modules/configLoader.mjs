@@ -51,7 +51,7 @@ const validateAndMergeConfigs = (defaults, user) => {
             forAction = required;
             required = user['actions'].includes(required);
         }
-        const emptyButNotReq = !userValue && !required;
+        const emptyButNotReq = (typeof userValue == "undefined") && !required;
 
         // Type check
         if (user[key] === undefined && required) {

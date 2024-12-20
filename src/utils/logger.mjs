@@ -44,10 +44,10 @@ const logger = {
   succeed: (message) => {
     if (spinner) {
       const duration = (performance.now() - startTime).toFixed(2); // Calculate the elapsed time in milliseconds
-      spinner.succeed(`${message} (took ${duration} ms)`);
+      spinner.succeed(`${message ? message : spinner.text} (took ${duration} ms)`);
       spinner = null;
     } else {
-      ora().start().succeed(`${message}`);
+      ora().start().succeed(`${message ? message : spinner.text}`);
     }
     return logger; // Enable chaining
   },

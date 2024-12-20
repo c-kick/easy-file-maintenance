@@ -37,7 +37,7 @@ export default {
   reorganizeTemplate:   {
     default:  "/{year}/{month}/",
     type:     "string",
-    validate: (value) => /^\/(?:\{(year|month|day)\}\/?)+$/.test(value),
+    validate: (value) => /^\/(?:\{(year|month|day)}\/?)+$/.test(value),
   },
   hashByteLimit:        {
     default: 131072,
@@ -83,6 +83,11 @@ export default {
       //...Array.from({ length: 2024 - 2000 + 1 }, (_, i) => (2000 + i).toString()) //example that ignores all directories named /2000 up to /2024.
     ],
     type:    "object",
+  },
+  emptyThreshold: {
+    default: 0,
+    type:    "number",
+    validate: (value) => Math.max(0, value),
   },
 
   // Files to ignore

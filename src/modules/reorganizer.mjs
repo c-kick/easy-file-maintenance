@@ -142,8 +142,7 @@ export async function extractOldestDate(file, dateThreshold, evalFullPath = true
     const timestampSources = [
       //{ key: 'birthtime', source: 'timestamps (birthtime)' },
       //{ key: 'ctime', source: 'timestamps (ctime)' },
-      //{ key: 'createdTime', source: 'timestamps (createdTime)' },
-      { key: 'modifiedTime', source: 'timestamps (modifiedTime)' }
+      { key: 'mtime', source: 'timestamps (mtime)' }
     ];
 
     timestampSources.forEach(({ key, source }) => {

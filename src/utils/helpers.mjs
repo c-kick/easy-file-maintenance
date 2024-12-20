@@ -284,3 +284,82 @@ export function formatBytes(bytes) {
 
   return `${formattedValue} ${sizes[i]}`;
 }
+
+/**
+ * Splits a given file path into its constituent parts and returns an array of partial paths.
+ *
+ * The function splits the input file path by the '/' character and then constructs
+ * partial paths by progressively joining the segments.
+ *
+ * @param {string} filePath - The file path to split and process.
+ * @returns {string[]} An array of partial paths, each representing a progressively
+ *                     longer segment of the original path.
+ *
+ * @example
+ * const parts = pathSplitter('/home/user/documents/file.txt');
+ * console.log(parts);
+ * // Output: ['/home', '/home/user', '/home/user/documents']
+ */
+export function pathSplitter(filePath) {
+  const parts = filePath.split('/');
+  return parts.slice(0, -1).map((_, index) => parts.slice(0, index + 1).join('/'));
+}
+
+/**
+ * Updates the statistics of directories within the given results object.
+ *
+ * This function processes the given file path, splits it into its constituent parts,
+ * and updates the statistics (total size, file count, and intrinsic size) for each
+ * directory in the path.
+ *
+ * @param {Object} results - The results object containing directory statistics.
+ * @param {Map<string, Object>} results.directories - A Map of directory paths to their statistics.
+ * @param {string} dir - The base directory path.
+ * @param {string} fullPath - The full path of the file or directory being processed.
+ * @param {Object} stats - The file system stats object for the file or directory.
+ * @param {boolean} ignored - A flag indicating whether the file or directory should be ignored in size calculations.
+ */
+export function updateDirectoryStats(results, dir, fullPath, stats, ignored) {
+  const splitPath = pathSplitter(path.relative(dir, fullPath));
+  splitPath.forEach((subPath) => {
+    const subDir = path.join(dir, subPath);
+    if (!results.directories.get(subDir)) {
+      results.directories.set(subDir, {
+        totalSize: 0,
+        fileCount: 0,
+        intrinsicSize: 0,
+        dirCount: 0,
+      });
+    }
+    results.directories.get(subDir).totalSize += ignored ? 0 : stats.size;
+    results.directories.get(subDir).fileCount++;
+    if (path.dirname(fullPath) === subDir) {
+      results.directories.get(subDir).intrinsicSize += ignored ? 0 : stats.size;
+    }
+    if (stats.isDirectory()) {
+      results.directories.get(subDir).dirCount++;
+    }
+  });
+}
+
+/**
+ * Matches a string against a given pattern.
+ *
+ * This function creates a regular expression from the provided pattern,
+ * replacing wildcard characters (*) with a regex pattern that matches any character sequence.
+ * It then tests the input string against this regex.
+ *
+ * @param {string} str - The string to be matched.
+ * @param {string} pattern - The pattern to match against, where '*' is treated as a wildcard.
+ * @returns {boolean} True if the string matches the pattern, false otherwise.
+ *
+ * @example
+ * matchPattern('example.txt', '*.txt'); // returns true
+ * matchPattern('example.txt', '*.jpg'); // returns false
+ */
+export function matchPattern(str, pattern) {
+  const regex = new RegExp(
+    '^' + pattern.replace(/[-/\\^$+?.()|[\]{}]/g, '\\$&').replace(/\*/g, '.*').toLowerCase() + '$'
+  );
+  return regex.test(str.toLowerCase());
+}

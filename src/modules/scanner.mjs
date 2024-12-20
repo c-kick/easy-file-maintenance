@@ -1,109 +1,105 @@
 import logger from '../utils/logger.mjs';
 import fs from 'fs/promises';
 import path from 'path';
-import pLimit from 'p-limit';
+import {formatBytes, matchPattern, updateDirectoryStats} from "../utils/helpers.mjs";
 
-const FILE_LIMIT = pLimit(5); // Limit file stats concurrency
-
-const pathSplitter = (filePath) => {
-  const parts = filePath.split('/');
-  return parts.slice(0, -1).map((_, index) => parts.slice(0, index + 1).join('/'));
-};
+function createItem(name, stats, fullPath, depth) {
+  return {
+    depth,
+    path:         fullPath,
+    dir:          path.dirname(fullPath),
+    name,
+    baseName:     path.basename(name, path.extname(fullPath)),
+    isFile:       false,
+    isDirectory:  false,
+    stats
+  }
+}
 
 async function getFiles(dir, config) {
-  const results = {directories: new Map(), files: new Map()};
+  const results = {directories: new Map(), files: new Map(), counters: {dir: 0, file: 0, size: 0, filesignored: 0, dirsignored: 0}};
   const queue = [{dir, depth: 0}];
 
   while (queue.length > 0) {
+    // Get next directory to process from queue
     const {dir: currentDir, depth} = queue.shift();
+
+    // Start scanning directory
     const dirItems = await fs.readdir(currentDir, {withFileTypes: true});
 
+    // Process each item found in directory
     for (const dirItem of dirItems) {
-      const res = path.resolve(currentDir, dirItem.name);
+      const fullPath = path.resolve(currentDir, dirItem.name);
       let stats;
       try {
-        stats = await fs.stat(res);
+        stats = await fs.stat(fullPath);
       } catch (error) {
-        logger.fail(`Error accessing ${res}: ${error.message}`);
+        logger.fail(`Error accessing ${fullPath}: ${error.message}`);
         continue;
       }
-      if (config.ignoreDirectories.some(pattern => matchPattern(dirItem.name, pattern)) ||
-        res.includes(config.recycleBinPath)) {
-        logger.text(`Ignoring path: ${res}`);
-      } else if (dirItem.isFile() && config.ignoreFiles.some(pattern => matchPattern(dirItem.name, pattern))) {
-        logger.text(`Ignoring file: ${res}`);
-      } else if (dirItem.isDirectory()) {
-        logger.text(`Scanning directory: ${res}`);
 
-        results.directories.set(res, {
-          name: dirItem.name,
-          baseName:     path.basename(dirItem.name, path.extname(res)),
-          path: res,
-          dir:          path.dirname(res),
-          size:         stats.size,
-          isFile:       false,
+      // Nothing is ignored by default
+      let ignored = false;
+
+      if (dirItem.isDirectory()) {
+        // Update directory counter
+        results.counters.dir++;
+
+        // Check if dir should be ignored
+        ignored = config.ignoreDirectories.some(pattern => matchPattern(dirItem.name, pattern)) || fullPath.includes(config.recycleBinPath);
+
+        // Update ignored counter
+        results.counters.dirsignored += ignored ? 1 : 0;
+
+        // Don't traverse directory further if it is ignored
+        if (ignored) continue;
+
+        // Add directory to results, if not ignored
+        results.directories.set(fullPath, {
+          ...createItem(dirItem.name, stats, fullPath, depth),
           isDirectory:  true,
-          modifiedTime: stats.mtime,
-          createdTime:  stats.ctime,
-          stats,
-          depth,
-          fileCount: results.directories.get(res)?.fileCount ?? 0,
-          intrinsicSize: results.directories.get(res)?.intrinsicSize ?? 0,
-          totalSize: results.directories.get(res)?.totalSize ?? 0,
+          fileCount: results.directories.get(fullPath)?.fileCount ?? 0,
+          dirCount: results.directories.get(fullPath)?.dirCount ?? 0,
+          intrinsicSize: results.directories.get(fullPath)?.intrinsicSize ?? 0,
+          totalSize: results.directories.get(fullPath)?.totalSize ?? 0,
         });
-        queue.push({dir: res, depth: depth + 1});
+
+        queue.push({dir: fullPath, depth: depth + 1});
       } else {
-        logger.text(`Scanning file: ${res}`);
+        // Update file and size counters
+        results.counters.file++;
+        results.counters.size += stats.size;
 
-        results.files.set(res, {
-          name: dirItem.name,
-          baseName: path.basename(dirItem.name, path.extname(res)),
-          extension: dirItem.name.split('.').pop().toLowerCase(),
-          path: res,
-          dir: path.dirname(res),
-          size: stats.size,
+        // Check if file should be ignored
+        ignored = config.ignoreFiles.some(pattern => matchPattern(dirItem.name, pattern));
+
+        // Update ignored counter
+        results.counters.filesignored += ignored ? 1 : 0;
+
+        // Add file to results
+        results.files.set(fullPath, {
+          ...createItem(dirItem.name, stats, fullPath, depth),
           isFile: true,
-          isDirectory: false,
+          extension: dirItem.name.split('.').pop().toLowerCase(),
           delete: config.removeFiles.some(pattern => matchPattern(dirItem.name, pattern)),
-          modifiedTime: stats.mtime,
-          createdTime: stats.ctime,
-          stats,
-          depth
-        });
-
-        const splitPath = pathSplitter(path.relative(dir, res));
-        splitPath.forEach((subPath, index) => {
-          const subDir = path.join(dir, subPath);
-          if (!results.directories.get(subDir)) {
-            results.directories.set(subDir, {
-              totalSize: 0,
-              fileCount: 0,
-              intrinsicSize: 0,
-            });
-          }
-          results.directories.get(subDir).totalSize += stats.size;
-          results.directories.get(subDir).fileCount++;
-          if (path.dirname(res) === subDir) {
-            results.directories.get(subDir).intrinsicSize += stats.size;
-          }
+          ignored,
         });
       }
+
+      // Update directory stats (file count, intrinsic size, total size)
+      updateDirectoryStats(results, dir, fullPath, stats, ignored);
+
+      logger.text(`Found ${results.counters.file} files (${results.counters.filesignored} ignored) in ${results.counters.dir} directories (${results.counters.dirsignored} ignored), totalling ${formatBytes(results.counters.size)}.`);
+
     }
   }
 
+  logger.succeed();
   return results;
 }
 
-function matchPattern(str, pattern) {
-  const regex = new RegExp(
-    '^' + pattern.replace(/[-/\\^$+?.()|[\]{}]/g, '\\$&').replace(/\*/g, '.*').toLowerCase() + '$'
-  );
-  return regex.test(str.toLowerCase());
-}
-
 async function scanDirectory(dirPath, config) {
-  logger.text(`Starting scan on directory: ${dirPath}`);
-
+  logger.start(`Scanning directory ${dirPath}...`);
   try {
     return await getFiles(dirPath, config);
   } catch (error) {
