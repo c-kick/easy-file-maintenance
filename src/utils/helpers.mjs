@@ -246,17 +246,13 @@ export function filterGroupsWithMultipleEntries(groupedItems) {
  * console.log(sidecars); // Outputs: [{ baseName: 'example', extension: 'xml', size: 512, dir: '/photos' }]
  */
 export function getSideCarFiles(file, filesInThisDir, extensions = ['jpg', 'jpeg', 'mp4', 'avi']) {
-  const basePattern = new RegExp(`^${file.baseName}(?![a-zA-Z0-9 \-])`);
-  const sideCarFiles = [];
-  if (extensions.includes(file.extension)) {
-    for (const otherFile of filesInThisDir[file.dir].filter(otherFile => otherFile !== file)) {
-      if (basePattern.test(otherFile.baseName) && file.size > otherFile.size) {
-        sideCarFiles.push(otherFile);
-      }
-    }
-
+  const fileSet = getFilesetForFile(file.path, filesInThisDir);
+  if (fileSet.length > 1) {
+    //console.log(`${file.name} is part of a fileset`);
+  } else {
+    //console.log(`${file.name} is NOT part of a fileset`);
   }
-  return sideCarFiles;
+  return fileSet ?? [];
 }
 
 /**
@@ -395,4 +391,57 @@ export async function canChangeOwnership(filePath) {
     console.error('Error checking ownership permissions:', err);
     return false;
   }
+}
+
+export function detectFilesets(files) {
+  const filesetMap = new Map();
+
+  // Helper function to normalize a basename
+  const normalizeBaseName = (baseName) => {
+    // Remove version markers, language codes, or other common delimiters
+    return baseName.replace(/(\.\d+|\.\w{2,3}|\[[^\]]+\]|-thumb)/g, "").trim();
+  };
+
+  // Iterate through the files map
+  files.forEach((file, filePath) => {
+    const { baseName } = file;
+    const normalized = normalizeBaseName(baseName);
+
+    // Group files by normalized basename
+    if (!filesetMap.has(normalized)) {
+      filesetMap.set(normalized, []);
+    }
+    filesetMap.get(normalized).push(filePath); // Store the full filePath for reference
+  });
+
+  // Extract filesets (groups with more than one file)
+  const filesets = [];
+  filesetMap.forEach((filePaths) => {
+    if (filePaths.length > 1) {
+      filesets.push(filePaths);
+    }
+  });
+
+  return filesets;
+}
+
+export function getFilesetForFile(filePath, directoryFiles) {
+  // Helper function to extract and normalize baseName
+  const extractBaseName = (filePath) => {
+    const fileName = filePath.split('/').pop(); // Get the file name from the full path
+    const baseName = fileName.replace(/\.[^/.]+$/, ""); // Remove the extension
+    // Normalize: remove markers like `.1`, language codes, or thumbnail markers
+    return baseName.replace(/(\.\d+|\.\w{2,3}|\[[^\]]+\]|-thumb)/g, "").trim();
+  };
+
+  // Extract the target file's baseName
+  const targetBaseName = extractBaseName(filePath);
+
+  // Iterate over directory files to find files with a matching normalized baseName
+  const fileset = Object.values(directoryFiles).filter((file) => {
+    const currentBaseName = extractBaseName(file.path);
+    return currentBaseName === targetBaseName;
+  });
+
+  return fileset.length > 1 ? fileset : []; // Return fileset if it contains more than one file
 }

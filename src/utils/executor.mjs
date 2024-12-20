@@ -25,12 +25,12 @@ async function doOperation(item) {
             // Move the file
             fsExtra.moveSync(item.path, item.move_to, { overwrite: true });
             size = item.size ?? 0;
-            if (item.sidecarFiles && item.sidecarFiles.length > 0 && config.handleSidecarFiles) {
-                item.sidecarFiles.forEach((file) => {
-                    console.log(`Also moving sidecar file "${file.path}"`);
+            if (item.sidecars.length) {
+                console.log(`Also moving ${item.sidecars.length} sidecar files...`);
+                item.sidecars.forEach((file) => {
+                    console.log(`Moving sidecar file "${file.path}"`);
                     fsExtra.moveSync(file.path, file.move_to, { overwrite: true });
-                    size += file.size;
-                })
+                });
             }
             success = true;
         } else if (item.hasOwnProperty('change_mode') && item.change_mode !== undefined) {

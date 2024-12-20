@@ -159,24 +159,18 @@ async function getDuplicateItems(items, binPath) {
       file => hashFileChunk(file.path),
       determineOriginal,
       (file) => ({
-          sidecars: getSideCarFiles(file, filesByDir).map(sidecarFile => ({
+          //todo: any sidecar files found should be hash-compared as a set!
+          sidecars: getSideCarFiles(file, filesByDir[file.dir]).map(sidecarFile => ({
               ...sidecarFile,
               move_to: rebasePath(binPath, sidecarFile.path)
           }))
       })
     );
 
-    //create a set of sidecar files found
-    const sidecarPaths = new Set(
-      Object.values(duplicateFiles).flat().flatMap(file =>
-        (file.sidecars || []).map(sidecar => sidecar.path)
-      )
-    );
-
-    //filter out any duplicates that are sidecars, and add move_to paths
+    //filter out any duplicates that have sidecars
     const returnFiles = Object.values(duplicateFiles)
     .flat() // Flatten the object values into a single array
-    .filter(file => !sidecarPaths.has(file.path))
+    .filter(file => file.sidecars.length === 0) // Filters out files with sidecars
     .map(file => ({
         ...file,
         move_to: rebasePath(binPath, file.path)
