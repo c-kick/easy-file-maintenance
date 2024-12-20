@@ -3,6 +3,7 @@ import readline from 'readline';
 import logger from '../utils/logger.mjs';
 import fs from "fs/promises";
 import crypto from "crypto";
+import chalk from "chalk";
 
 // Normalizes a given path, removing any trailing slashes and handling relative paths
 export function normalizePath(thisPath) {
@@ -17,19 +18,19 @@ export function userConfirm(question, validAnswers = ['y', 'a', 'n', 'c', 's']) 
   validAnswers.forEach((answer) => {
     switch (answer) {
       case 'y':
-        answerGuide.push('(y)es');
+        answerGuide.push(`(${chalk.green(answer)})es`);
         break;
       case 'a':
-        answerGuide.push('yes to (a)ll');
+        answerGuide.push(`yes to (${chalk.green(answer)})ll`);
         break;
       case 'n':
-        answerGuide.push('(n)o');
+        answerGuide.push(`(${chalk.red(answer)})o`);
         break;
       case 'c':
-        answerGuide.push('(c)ancel');
+        answerGuide.push(`(${chalk.yellow(answer)})ancel`);
         break;
       case 's':
-        answerGuide.push('(s)how affected items first');
+        answerGuide.push(`(${chalk.blue(answer)})how affected items first`);
         break;
       default:
         break;
@@ -118,7 +119,7 @@ export function doHeader(message = '', characters = 50, echo = true) {
     : '-'.repeat(characters);
 
   // Output the header to the console
-  if (echo) { console.log(header) } else { return header }
+  if (echo) { console.log(`\n${header}`) } else { return header }
 }
 
 
@@ -362,4 +363,36 @@ export function matchPattern(str, pattern) {
     '^' + pattern.replace(/[-/\\^$+?.()|[\]{}]/g, '\\$&').replace(/\*/g, '.*').toLowerCase() + '$'
   );
   return regex.test(str.toLowerCase());
+}
+
+/**
+ * Checks if the current user can change the ownership of a given file.
+ *
+ * This function retrieves the file statistics and compares the file's owner UID
+ * with the current user's UID. It also checks if the current user has root privileges.
+ *
+ * @param {string} filePath - The path to the file to check.
+ * @returns {Promise<boolean>} - A promise that resolves to `true` if the user can change ownership, `false` otherwise.
+ */
+export async function canChangeOwnership(filePath) {
+  try {
+    const stats = await fs.stat(filePath);
+    const userId = process.getuid(); // Current user's UID
+    const groupId = process.getgid(); // Current user's GID
+
+    // Check if the current user is the owner of the file
+    if (stats.uid === userId) {
+      return true; // Owner can always change ownership
+    }
+
+    // Alternatively, check if the user has root privileges (UID 0)
+    if (userId === 0) {
+      return true; // Root can always change ownership
+    }
+
+    return false; // Otherwise, can't change ownership
+  } catch (err) {
+    console.error('Error checking ownership permissions:', err);
+    return false;
+  }
 }

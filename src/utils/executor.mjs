@@ -1,5 +1,5 @@
 import logger from '../utils/logger.mjs';
-import {answerLoop, doHeader, userConfirm} from "./helpers.mjs";
+import {answerLoop, canChangeOwnership, doHeader, userConfirm} from "./helpers.mjs";
 import fs from 'fs/promises';
 import fsExtra from 'fs-extra';
 import path from 'path';
@@ -146,21 +146,25 @@ async function executeOperations(operations) {
     for (const operation in operations) {
         if (!operations.hasOwnProperty(operation) || !operations[operation].length) continue;
 
-        doHeader(operation);
+        doHeader(`${chalk.blue('Operation:')} ${operation}`);
         let proceed = yesAllActions || await getProceedAnswer(operation, operations, answers);
         if (!proceed) continue;
 
         for (const item of operations[operation]) {
+            const permissions = await canChangeOwnership(item.path);
             if (answers[operation] === 'c') {
                 logger.warn(`Not handling ${item.path} (User cancelled)`);
                 break;
             }
 
-            logger.indent();
             let yesAllItems = answers[operation] === 'a' || yesAllActions;
             if (!yesAllItems) {
+                console.log(`${chalk.green(item.stats.isFile() ? 'File:' : 'Directory:')} "${item.path}"`);
+                if (!permissions) {
+                    logger.warn(`Warning: current user has insufficient rights to modify this file, operation might fail!`);
+                }
                 answers[operation] = await userConfirm(
-                  `${chalk.blue('Operation:')} ${operation}\n${chalk.green('File:')} "${item.path}"\nHandle this file?`,
+                  `Handle this ${item.stats.isFile() ? 'file' : 'directory'}?`,
                   ['y', 'a', 'n', 'c']
                 );
             }
@@ -185,8 +189,9 @@ async function getProceedAnswer(operation, operations, answers) {
         return false;
     }
 
+    console.log(`${chalk.green('Items:')} ${operations[operation].length}`);
     const answer = await answerLoop(
-      `${chalk.blue('Operation:')} ${operation}\n${chalk.green('Items:')} ${operations[operation].length}\nStart handling these items?`,
+      `Start handling these items?`,
       ['y', 'n', 'c', 's'],
       {
           'y': async () => true,

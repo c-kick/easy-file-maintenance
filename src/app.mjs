@@ -51,8 +51,7 @@ import executeOperations from './utils/executor.mjs';
           if (dupe.path && dupe.move_to) {
             destructivePaths.add(dupe.path); // Add the file to destructive paths
             operations.duplicate.push({
-              path:         dupe.path,
-              size:         dupe.stats.size,
+              ...dupe,
               original:     dupe.duplicate_of,
               sidecarFiles: dupe.sidecars ?? [],
               move_to:      dupe.move_to
@@ -68,8 +67,7 @@ import executeOperations from './utils/executor.mjs';
         orphans.forEach(item => {
           destructivePaths.add(item.path); // Add to destructive paths
           operations.orphan.push({
-            path:    item.path,
-            size:    item.stats.size,
+            ...item,
             move_to: item.move_to
           });
         });
@@ -86,12 +84,7 @@ import executeOperations from './utils/executor.mjs';
         ].forEach(item => {
           destructivePaths.add(item.path); // Add to destructive paths
           operations.preCleanup.push({
-            path:    item.path,
-            dir:     item.dir,
-            size:    item.stats.size,
-            totalSize: item.totalSize ?? 'n/a',
-            fileCount: item.fileCount ?? 'n/a',
-            dirCount: item.dirCount ?? 'n/a',
+            ...item,
             move_to: item.move_to,
             reason:  item.reason
           });
@@ -107,7 +100,7 @@ import executeOperations from './utils/executor.mjs';
         reorganizeTheseFiles.files.forEach(item => {
           if (!destructivePaths.has(item.path)) { // Skip if path is in destructivePaths
             operations.reorganize.push({
-              path:       item.path,
+              ...item,
               move_to:    item.move_to,
               date_found: item.date,
             });
@@ -123,7 +116,7 @@ import executeOperations from './utils/executor.mjs';
           wrongPermissions.forEach(item => {
             if (!destructivePaths.has(item.path)) { // Skip if path is in destructivePaths
               operations.permissions.push({
-                path:         item.path,
+                ...item,
                 mode:         item.currentMode,
                 change_mode:  item.desiredMode,
                 fsChmodValue: item.fsChmodValue
@@ -143,7 +136,7 @@ import executeOperations from './utils/executor.mjs';
           wrongOwnership.forEach(item => {
             if (!destructivePaths.has(item.path)) { // Skip if path is in destructivePaths
               operations.ownership.push({
-                path:         item.path,
+                ...item,
                 owner:        item.currentUser,
                 group:        item.currentGroup,
                 new_owner:    item.expectedUser,
@@ -180,6 +173,7 @@ import executeOperations from './utils/executor.mjs';
           ].forEach(item => {
             destructivePaths.add(item.path); // Add to destructive paths
             operations.postCleanup.push({
+              ...item,
               depth:   item.depth,
               dir:     item.dir,
               path:    item.path,
@@ -193,8 +187,9 @@ import executeOperations from './utils/executor.mjs';
           await executeOperations({postCleanup: operations.postCleanup});
         }
       }
-      doHeader('Done! Bye.');
+      doHeader(`Done handling ${config.scanPath}`);
     }
+    doHeader('Done! Bye.');
   } catch (error) {
     logger.fail(`An error occurred: ${error.message}`).stop();
   }
