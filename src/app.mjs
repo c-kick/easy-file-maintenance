@@ -16,7 +16,7 @@ import executeOperations from './utils/executor.mjs';
   try {
     // Step 1: Load Configuration
     const configs = configLoader;
-    if (!configs || !Array.isArray(configs)) {
+    if (!configs || !Array.isArray(configs) || configs.every(config => !config)) {
       logger.fail('Configuration invalid, cannot continue.');
       process.exit(1);
     }
@@ -24,6 +24,7 @@ import executeOperations from './utils/executor.mjs';
     console.log(configs);
 
     for (const config of configs) {
+      if (!config) continue;
       doHeader(`Starting scan in path: ${config.scanPath}`);
       let scan = await scanDirectory(config.scanPath, config);
 

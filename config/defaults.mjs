@@ -87,7 +87,7 @@ export default {
   emptyThreshold: {
     default: 0,
     type:    "number",
-    validate: (value) => Math.max(0, value),
+    validate: (value) => value >= 0,
   },
 
   // Files to ignore

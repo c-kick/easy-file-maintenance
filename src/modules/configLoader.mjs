@@ -69,7 +69,7 @@ const validateAndMergeConfigs = (defaults, user) => {
                 return false;
             }
         } else if (validate && !validate(userValue) && !emptyButNotReq) {
-            const msg = `"${userValue}" is invalid for "${key}".`;
+            const msg = `"${userValue}" for "${key}" failed validation.`;
             // Validation check
             if (validate(defaultValue)) {
                 logger.warn(`${msg} Falling back to default: `, defaultValue);
