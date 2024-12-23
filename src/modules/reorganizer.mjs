@@ -205,7 +205,7 @@ async function getReorganizeItems(items, targetStructure = '/{year}/{month}/', d
 
         if (normalizePath(targetDir) !== normalizePath(file.dir)) {
           return {
-            path: file.path,
+            ...file,
             move_to: path.join(targetDir, targetName),
             date: oldestDate
           };
