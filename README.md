@@ -5,11 +5,17 @@ Easy File Maintenance is a Node.js project designed to help you manage and organ
 ## Features
 
 - **Pre-Cleanup**: Removes unwanted files & directories before processing.
+  These can be empty files, or files you specifically configured to delete (i.e. using `removeFiles`)
 - **Reorganize**: Organize files into a structured directory hierarchy based on extracted dates.
-- **Duplicates**: Detect and handle duplicate files.
+  Very useful for reorganizing photos. This uses a combination of EXIF data (if present) and other metadata to determine the 'oldest' date. You can specify a template for the directory structure in your config, inside `reorganizeTemplate`, which defaults to `/{year}/{month}/`
+- **Duplicates**: Detect and handle duplicate files. 
+  This works by grouping files by size, and then hashing the first 131072 bytes of each file to determine if they are identical. If files are found to be part of a file _set_ (i.e. a .JPG and a .AAE file, or an .MKV and a .NFO file, with the same filename), they are compared as sets.
 - **Orphans**: Identify and manage orphaned files.
-- **Permissions**: Adjust file permissions.
-- **Ownership**: Change file ownership.
+  Currently just finds files that are the only file inside a path.
+- **Permissions**: Adjust file permissions. 
+  Compares file/dir permissions to the configured file and dir permissions, and adjusts them accordingly.
+- **Ownership**: Change file ownership. 
+  Compares file/dir ownership to the configured owner user and group, and adjusts them accordingly.
 - **Post-Cleanup**: Same is pre-cleanup, but post.
 
 ## Installation
@@ -48,7 +54,7 @@ export default [
       "ownership",
       "post-cleanup"
     ],
-    removeFiles:       [
+    removeFiles:       [  //you can asterisks as a wildcard here
       "*.atf",
       "*.als",
       "*picasa.ini",
@@ -56,15 +62,16 @@ export default [
       "*SYNOFILE_*",
       "th__*"
     ],
-    ignoreFiles:       [
+    ignoreFiles:       [  //you can asterisks as a wildcard here
       "*.sh",
     ],
-    ignoreDirectories: [
+    ignoreDirectories: [  //you can asterisks as a wildcard here
       "@*",
     ]
   },
 ];
 ```
+See the `defaults.mjs` file for more configuration options.
 
 ## Usage
 
