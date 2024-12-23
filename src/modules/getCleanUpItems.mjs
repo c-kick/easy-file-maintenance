@@ -3,7 +3,7 @@ import logger from "../utils/logger.mjs";
 
 import pLimit from "p-limit";
 
-const FILE_LIMIT = pLimit(5); // Limit concurrency
+const FILE_LIMIT = pLimit(10); // Limit concurrency
 
 /**
  * Moves empty files and directories to the specified recycle bin while retaining their relative paths.
@@ -44,9 +44,11 @@ async function getCleanUpItems(items, scanDir, binPath, emptyThreshold  = 0) {
           }
         } else if (item.delete) {
           reason = 'is marked for deletion';
+        } else if (item.stats.size === 0) {
+          reason = 'file is empty (0 bytes)';
         }
 
-        if (empty || item.delete) {
+        if (empty || item.delete || (item.stats.size === 0)) {
           // Add the current item's path to the removal set
           removalPaths.add(item.path);
           return {

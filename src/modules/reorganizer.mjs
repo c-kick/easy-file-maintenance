@@ -5,7 +5,7 @@ import exifParser from 'exif-parser';
 import pLimit from "p-limit";
 import {normalizePath} from "../utils/helpers.mjs";
 
-const FILE_LIMIT = pLimit(5); // Limit concurrency
+const FILE_LIMIT = pLimit(10); // Limit concurrency
 const SUPPORTED_EXIF_EXTENSIONS = new Set([
   "jpg",    // JPEG image
   "jpeg",   // Alternate extension for JPEG

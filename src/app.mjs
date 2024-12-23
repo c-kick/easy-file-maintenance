@@ -41,6 +41,25 @@ import executeOperations from './utils/executor.mjs';
       const destructivePaths = new Set(); // Tracks paths marked for destructive actions
 
       //Destructive operations (items can either be in of these actions or in non-destructive operations, but not both)
+      //Todo: change the logic. If an item is not processed (e.g. it is considered for pre-cleanup, but pre-cleanup is not run by the user, it is still in destructivePaths, so not processed by other operations. This doesn't make sense.
+
+      if (config.actions.includes('pre-cleanup')) {
+        logger.start('Checking for items to pre-clean...');
+        const preCleanTheseItems = await getCleanUpItems(scan, config.scanPath, config.recycleBinPath, config.emptyThreshold);
+        logger.succeed(`Found ${preCleanTheseItems.directories.length} directories and ${preCleanTheseItems.files.length} files that should be cleaned up first, totaling ${formatBytes(preCleanTheseItems.size)}.`);
+
+        [
+          ...Object.values(preCleanTheseItems.files),
+          ...Object.values(preCleanTheseItems.directories)
+        ].forEach(item => {
+          destructivePaths.add(item.path); // Add to destructive paths
+          operations.preCleanup.push({
+            ...item,
+            move_to: item.move_to,
+            reason:  item.reason
+          });
+        });
+      }
 
       if (config.actions.includes('duplicates')) {
         logger.start('Checking for duplicate files...');
@@ -65,24 +84,6 @@ import executeOperations from './utils/executor.mjs';
           operations.orphan.push({
             ...item,
             move_to: item.move_to
-          });
-        });
-      }
-
-      if (config.actions.includes('pre-cleanup')) {
-        logger.start('Checking for items to pre-clean...');
-        const preCleanTheseItems = await getCleanUpItems(scan, config.scanPath, config.recycleBinPath, config.emptyThreshold);
-        logger.succeed(`Found ${preCleanTheseItems.directories.length} directories and ${preCleanTheseItems.files.length} files that should be cleaned up first, totaling ${formatBytes(preCleanTheseItems.size)}.`);
-
-        [
-          ...Object.values(preCleanTheseItems.files),
-          ...Object.values(preCleanTheseItems.directories)
-        ].forEach(item => {
-          destructivePaths.add(item.path); // Add to destructive paths
-          operations.preCleanup.push({
-            ...item,
-            move_to: item.move_to,
-            reason:  item.reason
           });
         });
       }
@@ -160,7 +161,7 @@ import executeOperations from './utils/executor.mjs';
           doHeader('post-cleanup');
           logger.start('Checking for items to post-clean...');
           scan = await scanDirectory(config.scanPath, config);
-          const postCleanTheseItems = await getCleanUpItems(scan, config.scanPath, config.recycleBinPath,  config.emptyThreshold);
+          const postCleanTheseItems = await getCleanUpItems(scan, config.scanPath, config.recycleBinPath, config.emptyThreshold);
           logger.succeed(`Found ${postCleanTheseItems.directories.length} directories and ${postCleanTheseItems.files.length} files requiring cleaning up after running all actions, totaling ${formatBytes(postCleanTheseItems.size)}.`);
 
           [

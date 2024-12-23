@@ -165,9 +165,9 @@ async function groupItems(items) {
     Object.values(duplicateDirs).flat().map(dir => dir.path)
   );
 
-  //Group files by properties that are likely to indicate duplicates, rejecting files in duplicate directories
+  //Group files by properties that are likely to indicate duplicates, rejecting empty files, and files in duplicate directories
   items.files.forEach((file) => {
-    if (duplicateDirPaths.has(file.dir)) {
+    if (duplicateDirPaths.has(file.dir) || file.stats.size === 0) {
       return;
     }
     const key = `${file.stats.size}`;

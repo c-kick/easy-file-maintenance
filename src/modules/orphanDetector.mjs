@@ -3,7 +3,7 @@ import {rebasePath} from "../utils/helpers.mjs";
 
 import pLimit from "p-limit";
 
-const FILE_LIMIT = pLimit(5); // Limit concurrency
+const FILE_LIMIT = pLimit(10); // Limit concurrency
 
 async function getOrphanItems(items, scanDir, binPath, emptyThreshold  = 0) {
   // Initialize a set to keep track of parent paths
