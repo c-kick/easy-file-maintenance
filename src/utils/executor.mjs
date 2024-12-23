@@ -25,13 +25,6 @@ async function doOperation(item) {
             // Move the file
             fsExtra.moveSync(item.path, item.move_to, { overwrite: true });
             size = item.size ?? 0;
-            if (item.sidecars.length) {
-                console.log(`Also moving ${item.sidecars.length} sidecar files...`);
-                item.sidecars.forEach((file) => {
-                    console.log(`Moving sidecar file "${file.path}"`);
-                    fsExtra.moveSync(file.path, file.move_to, { overwrite: true });
-                });
-            }
             success = true;
         } else if (item.hasOwnProperty('change_mode') && item.change_mode !== undefined) {
             // Change file permissions

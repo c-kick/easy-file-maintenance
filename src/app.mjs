@@ -50,12 +50,7 @@ import executeOperations from './utils/executor.mjs';
         Object.values(duplicates).flat().forEach(dupe => {
           if (dupe.path && dupe.move_to) {
             destructivePaths.add(dupe.path); // Add the file to destructive paths
-            operations.duplicate.push({
-              ...dupe,
-              original:     dupe.duplicate_of,
-              sidecarFiles: dupe.sidecars ?? [],
-              move_to:      dupe.move_to
-            });
+            operations.duplicate.push(dupe);
           }
         });
       }
