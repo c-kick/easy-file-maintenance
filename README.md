@@ -90,6 +90,7 @@ npm start
 ```
 The script will then begin scanning the configured `scanPath` and ennumerate files and folders it finds inside, eventually detailing what can be processed.
 Every defined action must be confirmed, and each individual file/directory operation inside these actions must be confirmed as well (there's an option to do a 'yes-to-all'). This is to provide maximum control, as the script may still wrongly assume duplicates, orphans, etc.
+Also, nothing is ever _actually_ deleted, but moved to the configured `recycleBinPath`, retaining any directory structure (e.g. `/volume1/photo/my/path/to/file.jpg` will be moved to `/volume1/photo/#recycle/my/path/to/file.jpg`, when using the above example configuration).
 
 ## License
 
