@@ -21,7 +21,7 @@ It was born out of a frustration with (non)existing tools that didn't quite meet
   Compares file/dir permissions to the configured file and dir permissions, and adjusts them accordingly.
 - **Ownership**: Change file ownership. 
   Compares file/dir ownership to the configured owner user and group, and adjusts them accordingly.
-- **Post-Cleanup**: Same is pre-cleanup, but post.
+- **Post-Cleanup**: Same is pre-cleanup, but run at post, so any empty directories created by the pervious actions can be cleaned up.
 
 ## Installation
 
