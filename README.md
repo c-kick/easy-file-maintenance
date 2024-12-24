@@ -47,7 +47,7 @@ export default [
   {
     scanPath:          "/volume1/photos/photos-to-sort-out/",
     relativePath:      "/volume1/photos",
-    recycleBinPath:    "/volume1/photos/#recycle",
+    recycleBinPath:    "/volume1/photos/#recycle", //this is the path where 'deleted' items will be moved to. This is a safe-guard; nothing is ever actually deleted.
     owner_user:        "Admin",
     owner_group:       "users",
     actions:           [
@@ -59,19 +59,19 @@ export default [
       "ownership",
       "post-cleanup"
     ],
-    removeFiles:       [  //you can asterisks as a wildcard here
-      "*.atf",
+    removeFiles:       [
+      "*.atf",  //note: you can use asterisks as wildcards (i.e. "*.atf" removes any file with the extension 'sh')
       "*.als",
       "*picasa.ini",
       "thumbs.db",
       "*SYNOFILE_*",
       "th__*"
     ],
-    ignoreFiles:       [  //you can asterisks as a wildcard here
-      "*.sh",
+    ignoreFiles:       [
+      "*.sh",  //note: you can use asterisks as wildcards (i.e. "*.sh" ignores any file with the extension 'sh')
     ],
-    ignoreDirectories: [  //you can asterisks as a wildcard here
-      "@*",
+    ignoreDirectories: [
+      "@*",  //note: you can use asterisks as wildcards (i.e. "@*" ignores any directory whos name starts with an '@')
     ]
   },
   //you can add another configuration, for a different path here. Useful if you want different organizing/cleanup rules for different folders
