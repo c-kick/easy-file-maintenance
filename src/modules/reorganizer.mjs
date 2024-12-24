@@ -3,7 +3,7 @@ import fs from 'fs/promises';
 import path from 'path';
 import exifParser from 'exif-parser';
 import pLimit from "p-limit";
-import {normalizePath} from "../utils/helpers.mjs";
+import {normalizeExtension, normalizePath} from "../utils/helpers.mjs";
 
 const FILE_LIMIT = pLimit(10); // Limit concurrency
 const SUPPORTED_EXIF_EXTENSIONS = new Set([
@@ -193,20 +193,29 @@ async function getReorganizeItems(items, targetStructure = '/{year}/{month}/', d
         const month = String(oldestDate.date.getUTCMonth() + 1).padStart(2, '0'); // Months are zero-indexed
         const day = String(oldestDate.date.getUTCDate()).padStart(2, '0');
 
-        const targetDir = path.join(relPath, targetStructure
+        //pathRef is used to preserve any references present in the original directory
+        //(e.g. /path/My Wedding Photos/ -> "path_My_Wedding_Photos_" is added to the filename)
+        const pathRef = normalizePath(file.dir).replace(relPath, '').replace(/[\\/]/g, '_');
+
+        let targetPath = path.join(relPath, targetStructure
         .replace('{year}', year)
         .replace('{month}', month)
-        .replace('{day}', day));
+        .replace('{day}', day)
+        .replace('{filename}', file.baseName)
+        .replace('{extension}', file.extension));
 
-        const pathRef = normalizePath(file.dir).replace(relPath, '').replace(/[\\/]/g, '_');
-        const targetName = file.name.includes(pathRef)
-          ? file.name
-          : appendToFilename(file.name, `_${pathRef}`);
+        //Only add path reference if we are actually moving the file to a different directory
+        if (path.dirname(targetPath) !== path.dirname(file.path) && !file.name.includes(pathRef)) {
+          targetPath.replace(file.baseName, appendToFilename(file.baseName, `_${pathRef}`));
+        }
 
-        if (normalizePath(targetDir) !== normalizePath(file.dir)) {
+        //Clean up the path (double extensions, etc.)
+        targetPath = normalizeExtension(normalizePath(targetPath), file.extension);
+
+        if (targetPath.toLowerCase() !== normalizePath(file.path).toLowerCase()) {
           return {
             ...file,
-            move_to: path.join(targetDir, targetName),
+            move_to: targetPath,
             date: oldestDate
           };
         }

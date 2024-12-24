@@ -72,7 +72,12 @@ export default [
     ],
     ignoreDirectories: [
       "@*",  //note: you can use asterisks as wildcards (i.e. "@*" ignores any directory whos name starts with an '@')
-    ]
+    ],
+    reorganizeTemplate:"/{year}/{month}/{day}/{filename}.{extension}",
+    //note: if you do funny stuff to the filename, e.g. adding the 
+    //day to it, it will keep adding the day to the filename on each run
+    //so be careful with that. It cannot be prevented, as the filename 
+    //*is* changing, so the move is not omitted.
   },
   //you can add another (or as many as you like, actually) configuration,
   //for a different path here. Useful if you want different

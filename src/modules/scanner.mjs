@@ -80,7 +80,7 @@ async function getFiles(dir, config) {
         results.files.set(fullPath, {
           ...createItem(dirItem.name, stats, fullPath, depth),
           isFile: true,
-          extension: dirItem.name.split('.').pop().toLowerCase(),
+          extension: dirItem.name.split('.').pop(),
           delete: config.removeFiles.some(pattern => matchPattern(dirItem.name, pattern)),
           ignored,
         });

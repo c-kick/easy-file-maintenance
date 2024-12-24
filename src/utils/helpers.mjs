@@ -372,3 +372,11 @@ export function getFilesetForFile(filePath, directoryFiles) {
 
   return fileset.length > 1 ? fileset : []; // Return fileset if it contains more than one file
 }
+
+export function normalizeExtension(fileName, extension) {
+  // Create a regex to match repeated extensions at the end of the string
+  const regex = new RegExp(`(\\.${extension})+$`, 'i');
+
+  // Replace the repeated extensions with a single one
+  return fileName.replace(regex, `.${extension}`);
+}

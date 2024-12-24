@@ -35,9 +35,9 @@ export default {
     required: true,
   },
   reorganizeTemplate:   {
-    default:  "/{year}/{month}/",
+    default:  "/{year}/{month}/{filename}.{extension}",
     type:     "string",
-    validate: (value) => /^\/(?:\{(year|month|day)}\/?)+$/.test(value),
+    validate: (value) => /(?:\{(year|month|day|filename|extension)}?)+/.test(value),
   },
   hashByteLimit:        {
     default: 131072,

@@ -72,7 +72,8 @@ const validateAndMergeConfigs = (defaults, user) => {
             const msg = `"${userValue}" for "${key}" failed validation.`;
             // Validation check
             if (validate(defaultValue)) {
-                logger.warn(`${msg} Falling back to default: `, defaultValue);
+                logger.warn(`${msg} Falling back to default:`);
+                logger.warn(defaultValue);
                 merged[key] = defaultValue;
             } else {
                 logger.fail(`Error validating config: ${msg} Default value (${defaultValue}) also invalid, or missing!`);
