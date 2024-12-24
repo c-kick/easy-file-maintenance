@@ -1,4 +1,5 @@
 # 🛠️ Easy File Maintenance
+![Beta](https://img.shields.io/badge/status-beta-red)
 ![NodeJS Version](https://img.shields.io/badge/Node.js->%3D%2015.14.0-6DA55F?logo=node.js&logoColor=98F483&style=plastic)
 ![Synology](https://img.shields.io/badge/Made%20for-Synology%20DSM-4384F5.svg?labelColor=555&logo=synology&logoColor=white&style=plastic)
 
