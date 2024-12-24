@@ -3,7 +3,9 @@
 ![NodeJS Version](https://img.shields.io/badge/Node.js->%3D%2015.14.0-6DA55F?logo=node.js&logoColor=98F483&style=plastic)
 ![Synology](https://img.shields.io/badge/Made%20for-Synology%20DSM-4384F5.svg?labelColor=555&logo=synology&logoColor=white&style=plastic)
 
-Easy File Maintenance is a Node.js project designed to help you manage and organize your files efficiently. It supports various actions such as cleanup, reorganization, duplicate detection, and more.
+Easy File Maintenance is a Node.js project designed to (re)organize and declutter files on a server efficiently. It supports various actions such as cleanup, reorganization, duplicate detection, and more.
+
+It was born out of a frustration with (non)existing tools that didn't quite meet the demand I had. I wanted a simple and efficient way to correct permissions, ownership, clean up empty files & directories, rename photos into new folder structures, remove unnecessary files, etc. Using my knowledge of NodeJS, and my own Synology fileserver as a testbed, I began building this do-it-all application. It might not be for you, but it works a treat on my system and helps me keep things organized and clean.
 
 ## Features
 
