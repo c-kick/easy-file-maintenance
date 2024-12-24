@@ -14,7 +14,7 @@ It was born out of a frustration with (non)existing tools that didn't quite meet
 - **Reorganize**: Organize files into a structured directory hierarchy based on extracted dates.
   Very useful for reorganizing photos. This uses a combination of EXIF data (if present) and other metadata to determine the 'oldest' date. You can specify a template for the directory structure in your config, inside `reorganizeTemplate`, which defaults to `/{year}/{month}/`
 - **Duplicates**: Detect and handle duplicate files. 
-  This works by grouping files by size, and then hashing the first 131072 bytes of each file to determine if they are identical. If files are found to be part of a file _set_ (i.e. a .JPG and a .AAE file, or an .MKV and a .NFO file, with the same filename), they are compared as sets.
+  This works by grouping files by size, and then hashing the first 131072 bytes of each file to determine if they are identical. If files are found to be part of a file _set_ (i.e. a .JPG and a .AAE file, or an .MKV, an .SRT and a .NFO file, all with the same filename), they are compared as sets.
 - **Orphans**: Identify and manage orphaned files.
   Currently just finds files that are the only file inside a path.
 - **Permissions**: Adjust file permissions. 
