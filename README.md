@@ -74,7 +74,9 @@ export default [
       "@*",  //note: you can use asterisks as wildcards (i.e. "@*" ignores any directory whos name starts with an '@')
     ]
   },
-  //you can add another configuration, for a different path here. Useful if you want different organizing/cleanup rules for different folders
+  //you can add another (or as many as you like, actually) configuration,
+  //for a different path here. Useful if you want different
+  //organizing/cleanup rules for different folders
 ];
 ```
 See the `defaults.mjs` file for more configurable options.
