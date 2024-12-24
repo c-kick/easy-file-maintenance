@@ -2,6 +2,7 @@
 ![Beta](https://img.shields.io/badge/status-beta-red)
 ![NodeJS Version](https://img.shields.io/badge/Node.js->%3D%2015.14.0-6DA55F?logo=node.js&logoColor=98F483&style=plastic)
 ![Synology](https://img.shields.io/badge/Made%20for-Synology%20DSM-4384F5.svg?labelColor=555&logo=synology&logoColor=white&style=plastic)
+[![License](https://img.shields.io/badge/License-MIT-blue.svg?logoColor=white&style=plastic)](https://github.com/c-kick/easy-file-maintenance/blob/main/LICENSE)
 
 Easy File Maintenance is a Node.js project designed to (re)organize and declutter files on a server efficiently. It supports various actions such as cleanup, reorganization, duplicate detection, and more.
 
