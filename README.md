@@ -74,9 +74,10 @@ export default [
       "@*",
     ]
   },
+  //you can add another configuration, for a different path here. Useful if you want different organizing/cleanup rules for different folders
 ];
 ```
-See the `defaults.mjs` file for more configuration options.
+See the `defaults.mjs` file for more configurable options.
 
 ## Usage
 
